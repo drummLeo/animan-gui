@@ -337,7 +337,7 @@ class EpisodesWindow(tk.Toplevel):
                 self.button_list.append(EpButton(n, self.scroller.sec_frame, ep, self.anime_, self.tooltip))
                 n += 1
             self.iconphoto(False, tk.PhotoImage(file=os.path.join(
-                os.path.expanduser("~"), f"Animes/Thumbs/{anime_.name}.png")))
+                os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{anime_.name}.png")))
         else:
             self.root.configure(cursor="arrow")
             self.destroy()
@@ -511,6 +511,18 @@ class Config(tk.Toplevel):
         else:
             self.write_config(check_episodes=0, show_name=1, anime_color="#337ED7",
                               button_color="#3CB371", bg_color="#123456")
+        if (not len(os.listdir(os.path.join(os.path.expanduser('~'), "Animes"))) > 3 and
+                messagebox.askokcancel(message="Baixar animes recomendados?")):
+            if not os.path.isfile(os.path.join(os.path.expanduser('~'), "Animes/Config/animes recomendados.json")):
+                with open(os.path.join(os.path.expanduser('~'), "Animes/Config/animes recomendados.json"),
+                          "wb") as file:
+                    file.write(requests.get("https://drive.usercontent.google.com"
+                                            "/download?id=1tbCWhpSpKqdUSNTqFJWCACX6FlGPFgL6&export=download&authuser=0")
+                               .content)
+            with open(os.path.join(os.path.expanduser("~"), "Animes/Config/animes recomendados.json"), 'r') as file:
+                animes = json.load(file)
+                for anime, link in animes.items():
+                    main.add_anime(anime, link)
 
     def change_color(self, item, color):
         if color is not None:
@@ -758,7 +770,7 @@ class MainWindow(tk.Tk):
             try:
                 image.write(requests.get(img_link, headers=headers).content)
                 img = Image.open(filename).convert("RGB") \
-                    .resize((self.screen_width // 4, (int(self.screen_height // (7 / 3)))))
+                    .resize((self.screen_width // 4, (int(self.screen_height // (10 / 3)))))
                 img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png")}')
                 img.close()
                 img = Image.open(filename).convert("RGB") \
