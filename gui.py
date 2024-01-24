@@ -298,6 +298,7 @@ class EpButton(tk.Button):
 class EpisodesWindow(tk.Toplevel):
     def __init__(self, root, anime_):
         tk.Toplevel.__init__(self, root, takefocus=True, bg="#363636")
+
         self.root = root
         self.root.configure(cursor="watch")
 
@@ -335,12 +336,14 @@ class EpisodesWindow(tk.Toplevel):
             for ep in self.anime_.get_episodes():
                 self.button_list.append(EpButton(n, self.scroller.sec_frame, ep, self.anime_, self.tooltip))
                 n += 1
+            self.iconphoto(False, tk.PhotoImage(file=os.path.join(
+                os.path.expanduser("~"), f"Animes/Thumbs/{anime_.name}.png")))
         else:
             self.root.configure(cursor="arrow")
             self.destroy()
             messagebox.showerror(message="Erro: verifique sua conexão com a internet.")
 
-        width = int(screen_width / 1.52)
+        width = int(screen_width / 1.55)
 
         height = (len(self.button_list) + 3) * 45
         if height > 620:
@@ -377,14 +380,17 @@ def highlight(color):
 class AniButton(tk.Button):
     def __init__(self, root, picture, row, column, anime_):
         self.text = anime_.name
-        width = int(root.winfo_screenwidth() // 5.333)
-        height = int(root.winfo_screenheight() // 4.5)
+        width = root.winfo_screenwidth() // (16 / 3)
+        height = root.winfo_screenheight() // 4
         self.root = root.master.master.master
         if anime_ in self.root.fav_anime_list:
             self.text += " \U00002605"
         if anime_.new_episode:
             self.text += "\n(Novo Episódio!)"
-        tk.Button.__init__(self, root, image=picture, borderwidth=10, text=self.text,
+        if len(self.text) > 25:
+            self.text = self.text[:25] + "..."
+        tk.Button.__init__(self, root, image=picture, borderwidth=10,
+                           text=self.text,
                            compound=tk.TOP, width=width, height=height, background="#337ED7", font=anime_font(anime_),
                            activebackground='#6690D0', foreground="black", activeforeground="yellow")
 
@@ -424,34 +430,46 @@ class Config(tk.Toplevel):
 
         self.canvas = tk.Canvas(self, bg="#363636")
         self.canvas.pack(fill=tk.BOTH, expand=1)
+
         self.canvas.create_text(self.width - 12, 12, font=button_font(), fill="white", text="X")
-        self.canvas.create_rectangle(10, 30, self.width - 10, 70, fill="#1C1C1C")
-        self.canvas.create_text(120, 50, font=button_font(), fill="#3CB371", text="Checar Episódios:")
 
-        self.values_list = ["Checar Todos", "Checar Apenas Favoritos", "Nunca Checar"]
+        self.canvas.create_rectangle(10, 25, self.width - 10, 65, fill="#1C1C1C")
+        self.canvas.create_text(120, 45, font=button_font(), fill="#3CB371", text="Checar Episódios:")
 
-        self.check_episode_config = ttk.Combobox(self.canvas, values=self.values_list, state="readonly",
+        self.check_episodes_values = ["Checar Todos", "Checar Apenas Favoritos", "Nunca Checar"]
+
+        self.check_episode_config = ttk.Combobox(self.canvas, values=self.check_episodes_values, state="readonly",
                                                  font=button_font(s=10), foreground="black", width=21)
         self.check_episode_config.current(self.config_info["check_episodes"])
-        self.check_episode_config.pack(pady=40, padx=15, anchor="e")
+        self.check_episode_config.pack(pady=30, padx=15, anchor="e")
 
-        self.canvas.create_rectangle(10, 80, self.width - 10, 120, fill="#1C1C1C")
-        self.canvas.create_text(113, 100, font=button_font(), fill="#3CB371", text="Cor dos animes:")
-        self.canvas.create_text(self.width - 110, 100, font=button_font(s=16), fill=self.config_info["anime_color"],
+        self.canvas.create_rectangle(10, 75, self.width - 10, 115, fill="#1C1C1C")
+        self.canvas.create_text(160, 95, font=button_font(), fill="#3CB371", text="Mostrar Nome dos Animes:")
+
+        self.show_name_values = ["Sim", "Não"]
+
+        self.show_name_config = ttk.Combobox(self.canvas, values=self.show_name_values, state="readonly",
+                                             font=button_font(s=10), foreground="black", width=21)
+        self.show_name_config.current(self.config_info["show_name"])
+        self.show_name_config.pack(padx=15, pady=0, anchor="e")
+
+        self.canvas.create_rectangle(10, 125, self.width - 10, 165, fill="#1C1C1C")
+        self.canvas.create_text(113, 145, font=button_font(), fill="#3CB371", text="Cor dos animes:")
+        self.canvas.create_text(self.width - 110, 145, font=button_font(s=16), fill=self.config_info["anime_color"],
                                 text=self.config_info["anime_color"], tags="anime_color_text")
-        self.canvas.create_rectangle(self.width - 50, 85, self.width - 20, 115, fill=self.config_info["anime_color"])
+        self.canvas.create_rectangle(self.width - 50, 130, self.width - 20, 160, fill=self.config_info["anime_color"])
 
-        self.canvas.create_rectangle(10, 130, self.width - 10, 170, fill="#1C1C1C")
-        self.canvas.create_text(113, 150, font=button_font(), fill="#3CB371", text="Cor dos botões:")
-        self.canvas.create_text(self.width - 110, 150, font=button_font(s=16), fill=self.config_info["button_color"],
+        self.canvas.create_rectangle(10, 175, self.width - 10, 215, fill="#1C1C1C")
+        self.canvas.create_text(113, 195, font=button_font(), fill="#3CB371", text="Cor dos botões:")
+        self.canvas.create_text(self.width - 110, 195, font=button_font(s=16), fill=self.config_info["button_color"],
                                 text=self.config_info["button_color"], tags="button_color_text")
-        self.canvas.create_rectangle(self.width - 50, 135, self.width - 20, 165, fill=self.config_info["button_color"])
+        self.canvas.create_rectangle(self.width - 50, 180, self.width - 20, 210, fill=self.config_info["button_color"])
 
-        self.canvas.create_rectangle(10, 180, self.width - 10, 220, fill="#1C1C1C")
-        self.canvas.create_text(104, 200, font=button_font(), fill="#3CB371", text="Cor de fundo:")
-        self.canvas.create_text(self.width - 110, 200, font=button_font(s=16), fill=self.config_info["bg_color"],
+        self.canvas.create_rectangle(10, 225, self.width - 10, 265, fill="#1C1C1C")
+        self.canvas.create_text(104, 245, font=button_font(), fill="#3CB371", text="Cor de fundo:")
+        self.canvas.create_text(self.width - 110, 245, font=button_font(s=16), fill=self.config_info["bg_color"],
                                 text=self.config_info["bg_color"], tags="bg_color_text")
-        self.canvas.create_rectangle(self.width - 50, 185, self.width - 20, 215, fill=self.config_info["bg_color"])
+        self.canvas.create_rectangle(self.width - 50, 230, self.width - 20, 260, fill=self.config_info["bg_color"])
 
         self.reset_button = tk.Button(self.canvas, text="Redefinir", bg=self.config_info["button_color"], fg="black",
                                       activeforeground="red", font=button_font(),
@@ -462,13 +480,25 @@ class Config(tk.Toplevel):
         self.bind("<ButtonRelease-1>", self.local_event)
         self.bind("<B1-Motion>", self.move)
         self.check_episode_config.bind("<<ComboboxSelected>>", lambda e: self.write_config(
-            {"check_episodes": self.values_list.index(self.check_episode_config.get())}))
+            check_episodes=self.check_episodes_values.index(self.check_episode_config.get())
+        ))
+
+        def show_name():
+            value = self.show_name_values.index(self.show_name_config.get())
+            self.write_config(show_name=value)
+
+            if messagebox.askyesno(title="Reiniciar?", message="Para alterar esta configuração "
+                                   "é necessário reiniciar o programa, reiniciar agora?"):
+                self.root.destroy()
+                return MainWindow()
+
+        self.show_name_config.bind("<<ComboboxSelected>>", lambda e: show_name())
         self.root.bind("<Unmap>", lambda e: self.withdraw())
 
-    def write_config(self, config):
+    def write_config(self, **kwargs):
         with open(os.path.join(os.path.expanduser("~"), "Animes/Config/config.json"), 'w') as file:
-            for n in range(len(config)):
-                self.config_info[list(config.keys())[n]] = list(config.values())[n]
+            for n in range(len(kwargs)):
+                self.config_info[list(kwargs.keys())[n]] = list(kwargs.values())[n]
             json.dump(self.config_info, file, indent=4)
         self.read_config()
 
@@ -479,13 +509,13 @@ class Config(tk.Toplevel):
             with open(os.path.join(os.path.expanduser("~"), "Animes/Config/config.json"), 'r') as file:
                 self.config_info = json.load(file)
         else:
-            self.write_config({"check_episodes": 0, "anime_color": "#337ED7",
-                               "button_color": "#3CB371", "bg_color": "#123456"})
+            self.write_config(check_episodes=0, show_name=1, anime_color="#337ED7",
+                              button_color="#3CB371", bg_color="#123456")
 
     def change_color(self, item, color):
         if color is not None:
             if item == "anime":
-                self.write_config({"anime_color": color})
+                self.write_config(anime_color=color)
                 self.canvas.delete("anime_color_text")
                 self.canvas.create_text(self.width - 110, 100, font=button_font(s=16),
                                         fill=self.config_info["anime_color"],
@@ -496,7 +526,7 @@ class Config(tk.Toplevel):
                     button[0].configure(bg=self.config_info["anime_color"])
                     button[0].configure(activebackground=highlight(self.config_info["anime_color"]))
             if item == "button":
-                self.write_config({"button_color": color})
+                self.write_config(button_color=color)
                 self.canvas.delete("button_color_text")
                 self.canvas.create_text(self.width - 110, 150, font=button_font(s=16),
                                         fill=self.config_info["button_color"],
@@ -510,7 +540,7 @@ class Config(tk.Toplevel):
                 self.root.canvas.add_button.configure(bg=color, activebackground=highlight(color))
                 self.root.canvas.exit_button.configure(bg=color, activebackground=highlight(color))
             if item == "background":
-                self.write_config({"bg_color": color})
+                self.write_config(bg_color=color)
                 self.canvas.delete("bg_color_text")
                 self.canvas.create_text(self.width - 110, 200, font=button_font(s=16),
                                         fill=self.config_info["bg_color"],
@@ -554,11 +584,12 @@ class Config(tk.Toplevel):
     def redefine(self):
         self.withdraw()
         if messagebox.askokcancel(message="Tem certeza que deseja redefinir as configurações?"):
-            self.write_config({"check_episodes": 0})
+            self.write_config(check_episodes=0)
             self.change_color("anime", "#337ED7")
             self.change_color("button", "#3CB371")
             self.change_color("background", "#123456")
             self.check_episode_config.current(0)
+            self.show_name_config.current(1)
         self.deiconify()
 
 
@@ -605,17 +636,11 @@ class MainWindow(tk.Tk):
         self.fav_anime_list = []
 
         self.title("Animan")
+
         self.screen_width = self.winfo_screenwidth()
-        if self.screen_width >= 1600:
-            self.screen_width -= 20
-        if self.screen_width <= 1400:
-            self.screen_width += 20
         self.screen_height = self.winfo_screenheight()
-        if self.screen_height >= 900:
-            self.screen_height -= 16
-        if self.screen_height <= 768:
-            self.screen_height += 16
-        self.geometry(f"{int(self.screen_width // 1.11)}x{int(self.screen_height // 1.13)}")
+
+        self.geometry(f"{int(self.screen_width // (4 / 3) + 135)}x{int(self.screen_height // 1.13)}")
         self.resizable(width=False, height=False)
         self.configure(background='#1C1C1C')
 
@@ -650,6 +675,12 @@ class MainWindow(tk.Tk):
 
         if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs")):
             os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs"))
+
+        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Grandes")):
+            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Grandes"))
+
+        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Pequenas")):
+            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Pequenas"))
 
         try:
             self.iconphoto(False, tk.PhotoImage(file=os.path.join(
@@ -727,8 +758,12 @@ class MainWindow(tk.Tk):
             try:
                 image.write(requests.get(img_link, headers=headers).content)
                 img = Image.open(filename).convert("RGB") \
-                    .resize((self.screen_width // 6, self.screen_height // 6))
-                img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png")}')
+                    .resize((self.screen_width // 4, (int(self.screen_height // (7 / 3)))))
+                img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png")}')
+                img.close()
+                img = Image.open(filename).convert("RGB") \
+                    .resize((self.screen_width // 4, (int(self.screen_height // (13 / 3)))))
+                img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Pequenas/{ani.name}.png")}')
             except UnidentifiedImageError:
                 print(f"Erro: Falha ao adicionar thumb do anime {ani.name}.")
         os.remove(filename)
@@ -742,11 +777,21 @@ class MainWindow(tk.Tk):
                     self.splash.finish()
             except tk.TclError:
                 pass
-            if not os.path.isfile(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png")):
+            if not (os.path.isfile(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png" or
+                                                                         os.path.isfile(
+                                                                             os.path.join(os.path.expanduser("~"),
+                                                                                          f"Animes/Thumbs/Pequenas/"
+                                                                                          f"{ani.name}.png"))))):
                 self.draw_thumb(ani)
-                enhance_image(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png"))
+                enhance_image(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png"))
+                enhance_image(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Pequenas/{ani.name}.png"))
             if not error:
-                img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png"))
+                if self.config_screen.config_info["show_name"] == 1:
+                    img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"),
+                                                          f"Animes/Thumbs/Grandes/{ani.name}.png"))
+                else:
+                    img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"),
+                                                          f"Animes/Thumbs/Pequenas/{ani.name}.png"))
             else:
                 img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/animan-gui.png"))
 
@@ -825,20 +870,21 @@ class ResultButton(tk.Button):
 
 class SearchAnimeDialog(tk.Toplevel):
     def __init__(self, root):
-        tk.Toplevel.__init__(self, root)
+        tk.Toplevel.__init__(self, root, takefocus=True)
         self.title("Pesquisar Animes")
         self.configure(bg="#1C1C1C")
-        self.overrideredirect(True)
+        self.iconphoto(False, tk.PhotoImage(file=os.path.join(
+            os.path.expanduser("~"), "Animes/Thumbs/animan-gui.png")))
 
         self.root = root
 
         self.top_canvas = tk.Canvas(self, bg="#363636")
-        self.top_canvas.pack(side=tk.TOP)
+        self.top_canvas.pack(side=tk.TOP, fill=tk.X)
 
         self.top_label = tk.Label(self.top_canvas, text="Procurar Animes:", font=button_font(s=18), bg="#363636")
         self.top_label.pack(pady=1)
 
-        self.search_field = tk.Entry(self.top_canvas, width=69, bg="grey", font=button_font(), fg="white")
+        self.search_field = tk.Entry(self.top_canvas, width=83, bg="grey", font=button_font(), fg="white")
         self.search_field.pack(side=tk.LEFT, fill=tk.BOTH)
 
         def search_animes_threaded():
@@ -847,9 +893,9 @@ class SearchAnimeDialog(tk.Toplevel):
             except RuntimeError:
                 self.search_animes()
 
-        self.search_button = tk.Button(self.top_canvas, text='\U000023CE',
+        self.search_button = tk.Button(self.top_canvas, text='\U000023CE', width=5,
                                        command=search_animes_threaded, bg="#363636", fg="white")
-        self.search_button.pack(side=tk.RIGHT)
+        self.search_button.pack(side=tk.LEFT, fill=tk.X, padx=1)
 
         self.button_list = []
 
@@ -916,58 +962,60 @@ class SearchAnimeDialog(tk.Toplevel):
             self.button_list.clear()
 
             self.scroller.unbind_wheel()
+
+            keywords = self.search_field.get().split()
+            soup = BeautifulSoup(requests.get(f"https://animesorionvip.com/?s={'+'.join(keywords)}", headers=headers)
+                                 .content, "html.parser")
+
+            images = soup.find("div", {"id": "sliderHome"}).find_all("img")
+            titles = soup.find("div", {"id": "sliderHome"}).find_all("a")
+
+            result_list = []
+            link_list = []
+            for result in zip(titles, images[1::2]):
+                result_list.append((result[0].get("title"), result[1].get("src")))
+                link_list.append(result[0].get("href"))
+
+            n = 0
+            for title in result_list:
+                label = tk.Label(self.frame, text=title[0] + ':', anchor="center", font=button_font(),
+                                 bg=highlight(highlight(self.root.config_screen.config_info["bg_color"])), fg="black")
+                label.pack(pady=5, anchor="w")
+
+                with tempfile.TemporaryFile() as image:
+                    try:
+                        image.write(requests.get(title[1], headers=headers).content)
+                        img = Image.open(image).convert("RGB") \
+                            .resize((150, 150))
+                        img.save(image, format="png")
+                    except requests.exceptions.InvalidSchema:
+                        pass
+                    except PIL.UnidentifiedImageError:
+                        pass
+                    else:
+                        img = PIL.ImageTk.PhotoImage(img)
+
+                        button = ResultButton(self, img, title[0], n, link_list)
+
+                        self.button_list.append((button, label, img, title[0]))
+
+                        label.configure(text=button.info_list[0].find("span").text + ':')
+
+                    if self.winfo_height() == self.height:
+                        self.geometry(f"{self.width}x{self.height + 1}"
+                                      f"+{self.winfo_x()}+{self.winfo_y()}")
+                    else:
+                        self.geometry(f"{self.width}x{self.height}"
+                                      f"+{self.winfo_x()}+{self.winfo_y()}")
+
+                n += 1
+                self.progress_bar["value"] += 100 / len(result_list)
+
+            self.configure(cursor="arrow")
+
         except RuntimeError:
-            pass
-
-        keywords = self.search_field.get().split()
-        soup = BeautifulSoup(requests.get(f"https://animesorionvip.com/?s={'+'.join(keywords)}", headers=headers)
-                             .content, "html.parser")
-
-        images = soup.find("div", {"id": "sliderHome"}).find_all("img")
-        titles = soup.find("div", {"id": "sliderHome"}).find_all("a")
-
-        result_list = []
-        link_list = []
-        for result in zip(titles, images[1::2]):
-            result_list.append((result[0].get("title"), result[1].get("src")))
-            link_list.append(result[0].get("href"))
-
-        n = 0
-        for title in result_list:
-            label = tk.Label(self.frame, text=title[0] + ':', anchor="center", font=button_font(),
-                             bg=highlight(highlight(self.root.config_screen.config_info["bg_color"])), fg="black")
-            label.pack(pady=5, anchor="w")
-
-            with tempfile.TemporaryFile() as image:
-                try:
-                    image.write(requests.get(title[1], headers=headers).content)
-                    img = Image.open(image).convert("RGB") \
-                        .resize((150, 150))
-                    img.save(image, format="png")
-                except requests.exceptions.InvalidSchema:
-                    pass
-                except PIL.UnidentifiedImageError:
-                    pass
-                else:
-                    img = PIL.ImageTk.PhotoImage(img)
-
-                    button = ResultButton(self, img, title[0], n, link_list)
-
-                    self.button_list.append((button, label, img, title[0]))
-
-                    label.configure(text=button.info_list[0].find("span").text + ':')
-
-                if self.winfo_height() == self.height:
-                    self.geometry(f"{self.width}x{self.height + 1}"
-                                  f"+{self.winfo_x()}+{self.winfo_y()}")
-                else:
-                    self.geometry(f"{self.width}x{self.height}"
-                                  f"+{self.winfo_x()}+{self.winfo_y()}")
-
-            n += 1
-            self.progress_bar["value"] += 100 / len(result_list)
-
-        self.configure(cursor="arrow")
+            messagebox.showerror("Erro, por favor tente novamente.")
+            self.destroy()
 
     def move(self, event):
         if event.widget is self.top_canvas or event.widget is self.top_label:
