@@ -11,7 +11,7 @@ import webbrowser
 from tkinter import messagebox, ttk, font
 
 import requests
-from PIL import Image, UnidentifiedImageError, ImageTk, ImageEnhance
+from PIL import Image, UnidentifiedImageError, ImageTk, ImageEnhance, ImageDraw, ImageFont
 import PIL
 from bs4 import BeautifulSoup
 from tkinter.colorchooser import askcolor
@@ -56,7 +56,7 @@ class Splash(tk.Toplevel):
     def load_bar(self, text='Finalizando', step=5, small_font=False):
         self.percentage += step
         self.load.delete("text")
-        self.load.create_rectangle(0, 520, int(self.percentage * 8.75), 540, outline="green",
+        self.load.create_rectangle(0, 520, int(self.percentage * (self.winfo_width() / 100)), 540, outline="green",
                                    fill="purple", tags="rect")
         if not small_font:
             self.load.create_text(self.winfo_width() // 2, 20, text=f"{text}... {self.percentage}%",
@@ -107,14 +107,15 @@ class ContextMenu(tk.Listbox):
             self.popup_menu.grab_release()
 
     def remove_anime(self):
-        if messagebox.askyesno(message=f'Tem certeza que quer remover o anime "{self.anime_.name}"?'):
+        if messagebox.askyesno(title="Remover Anime",
+                               message=f'Tem certeza que quer remover o anime "{self.anime_.name}"?'):
             main.remove_anime(self.anime_)
             try:
                 os.remove(os.path.join(os.path.expanduser('~'), f"Animes/Thumbs/{self.anime_.name}.png"))
             except OSError:
                 pass
-            messagebox.showinfo(message=f'Anime "{self.anime_.name}" deletado com sucesso! ' +
-                                        f'O aplicativo será reiniciado!')
+            messagebox.showinfo(title="Remover Anime", message=f'Anime "{self.anime_.name}" removido com sucesso! ' +
+                                                               f'O aplicativo será reiniciado!')
             self.parent.master.master.master.master.destroy()
             return MainWindow()
 
@@ -164,7 +165,7 @@ class ContextMenu(tk.Listbox):
                 self.anime_.file_name = os.path.join(os.path.expanduser('~'), f"Animes/{name}.json")
 
                 root.destroy()
-                messagebox.showinfo(message="Anime renomeado com sucesso!")
+                messagebox.showinfo(title="Renomear Anime", message="Anime renomeado com sucesso!")
 
         button = tk.Button(root, text="Renomear", command=rename, font=button_font(),
                            background='#3CB371', activebackground='#8FBC8F', fg="black")
@@ -177,10 +178,11 @@ class ContextMenu(tk.Listbox):
         os.rename(os.path.join(directory, f"{self.anime_.name}.json"),
                   os.path.join(directory, f"Favorites/{self.anime_.name}.json"))
         self.anime_.file_name = os.path.join(directory, f"Favorites/{self.anime_.name}.json")
-        self.parent.configure(text=self.anime_.name + " \U00002605")
-        self.popup_menu.delete(0)
-        self.popup_menu.insert_command(0, label="Remover fav.",
-                                       command=self.remove_fav)
+        if self.parent.show_name:
+            self.parent.configure(text=self.anime_.name + " \U00002605")
+        messagebox.showinfo(title="Adicionar Favorito", message="Favorito Adicionado! O programa será reiniciado.")
+        self.parent.root.destroy()
+        return MainWindow()
 
     def remove_fav(self):
         directory = os.path.join(os.path.expanduser("~"), "Animes")
@@ -188,10 +190,11 @@ class ContextMenu(tk.Listbox):
             os.rename(os.path.join(directory, f"Favorites/{self.anime_.name}.json"),
                       os.path.join(directory, f"{self.anime_.name}.json"))
             self.anime_.file_name = os.path.join(directory, f"{self.anime_.name}.json")
-            self.parent.configure(text=self.anime_.name)
-            self.popup_menu.delete(0)
-            self.popup_menu.insert_command(0, label="Favoritar",
-                                           command=self.add_to_fav)
+            if self.parent.show_name:
+                self.parent.configure(text=self.anime_.name)
+            messagebox.showinfo(title="Remover Favorito", message="Favorito Removido! O programa será reiniciado.")
+            self.parent.root.destroy()
+            return MainWindow()
         except OSError:
             messagebox.showerror(message="Erro: Anime não encontrado nos favoritos.")
 
@@ -337,7 +340,7 @@ class EpisodesWindow(tk.Toplevel):
                 self.button_list.append(EpButton(n, self.scroller.sec_frame, ep, self.anime_, self.tooltip))
                 n += 1
             self.iconphoto(False, tk.PhotoImage(file=os.path.join(
-                os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{anime_.name}.png")))
+                os.path.expanduser("~"), f"Animes/Thumbs/animan-gui.png")))
         else:
             self.root.configure(cursor="arrow")
             self.destroy()
@@ -379,17 +382,25 @@ def highlight(color):
 
 class AniButton(tk.Button):
     def __init__(self, root, picture, row, column, anime_):
-        self.text = anime_.name
-        width = root.winfo_screenwidth() // (16 / 3)
+        width = int(root.winfo_screenwidth() // (16 / 3))
         height = root.winfo_screenheight() // 4
         self.root = root.master.master.master
+
+        self.show_name = not self.root.config_screen.config_info["show_name"]
+
+        self.text = anime_.name if self.show_name else ''
+
+        self.picture = picture
+
         if anime_ in self.root.fav_anime_list:
-            self.text += " \U00002605"
+            if self.show_name:
+                self.text += " \U00002605"
         if anime_.new_episode:
-            self.text += "\n(Novo Episódio!)"
+            if self.show_name:
+                self.text += "\n(Novo Episódio!)"
         if len(self.text) > 25:
             self.text = self.text[:25] + "..."
-        tk.Button.__init__(self, root, image=picture, borderwidth=10,
+        tk.Button.__init__(self, root, image=self.picture, borderwidth=10,
                            text=self.text,
                            compound=tk.TOP, width=width, height=height, background="#337ED7", font=anime_font(anime_),
                            activebackground='#6690D0', foreground="black", activeforeground="yellow")
@@ -487,8 +498,9 @@ class Config(tk.Toplevel):
             value = self.show_name_values.index(self.show_name_config.get())
             self.write_config(show_name=value)
 
-            if messagebox.askyesno(title="Reiniciar?", message="Para alterar esta configuração "
-                                   "é necessário reiniciar o programa, reiniciar agora?"):
+            if messagebox.askyesno(title="Mostrar Nomes dos Animes",
+                                   message="Para alterar esta configuração "
+                                           "é necessário reiniciar o programa, reiniciar agora?"):
                 self.root.destroy()
                 return MainWindow()
 
@@ -512,7 +524,7 @@ class Config(tk.Toplevel):
             self.write_config(check_episodes=0, show_name=1, anime_color="#337ED7",
                               button_color="#3CB371", bg_color="#123456")
         if (not len(os.listdir(os.path.join(os.path.expanduser('~'), "Animes"))) > 3 and
-                messagebox.askokcancel(message="Baixar animes recomendados?")):
+                messagebox.askokcancel(title="Baixar Recomendações", message="Baixar animes recomendados?")):
             if not os.path.isfile(os.path.join(os.path.expanduser('~'), "Animes/Config/animes recomendados.json")):
                 with open(os.path.join(os.path.expanduser('~'), "Animes/Config/animes recomendados.json"),
                           "wb") as file:
@@ -595,7 +607,8 @@ class Config(tk.Toplevel):
 
     def redefine(self):
         self.withdraw()
-        if messagebox.askokcancel(message="Tem certeza que deseja redefinir as configurações?"):
+        if messagebox.askokcancel(title="Redefinir Configurações",
+                                  message="Tem certeza que deseja redefinir as configurações?"):
             self.write_config(check_episodes=0)
             self.change_color("anime", "#337ED7")
             self.change_color("button", "#3CB371")
@@ -673,7 +686,7 @@ class MainWindow(tk.Tk):
 
         self.splash = Splash(self)
 
-        if len(self.get_anime_list()) <= 12:
+        if len(self.get_anime_lists()) <= 12:
             self.scroller.unbind_wheel()
         try:
             self.splash.percentage = 0
@@ -687,12 +700,6 @@ class MainWindow(tk.Tk):
 
         if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs")):
             os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs"))
-
-        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Grandes")):
-            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Grandes"))
-
-        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Pequenas")):
-            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/Pequenas"))
 
         try:
             self.iconphoto(False, tk.PhotoImage(file=os.path.join(
@@ -716,7 +723,7 @@ class MainWindow(tk.Tk):
         except tk.TclError:
             pass
 
-    def get_anime_list(self):
+    def get_anime_lists(self):
         directory = os.path.join(os.path.expanduser("~"), "Animes")
 
         if not os.path.isdir(directory):
@@ -727,58 +734,54 @@ class MainWindow(tk.Tk):
         if self.config_screen.config_info["check_episodes"] == 2:
             main.already_searched = True
 
-        for file in os.listdir(os.path.join(directory, "Favorites")):
-            if os.path.isfile(os.path.join(directory, f"Favorites/{file}")) and file != "anime_dict.json" \
-                    and file[len(file) - 5:] == ".json":
-                anime = main.Anime(os.path.join(directory, f"Favorites/{file}"))
-                if anime.last_search[0] < time.localtime()[2] or anime.last_search[1] < time.localtime()[1] \
-                        and not main.already_searched:
-                    step = math.ceil(100 / len([i for i in os.listdir(os.path.join(directory, "Favorites")) if
-                                                os.path.isfile(os.path.join(directory, f"Favorites/{i}"))
-                                                and i[len(i) - 5:] == ".json"]))
-                    try:
-                        self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}", step=step,
-                                             small_font=True)
-                    except tk.TclError:
-                        pass
-                self.fav_anime_list.append(anime)
+        anime_number = len([i for i in os.listdir(os.path.join(directory, "Favorites")) if
+                            os.path.isfile(os.path.join(directory, f"Favorites/{i}"))
+                            and i[len(i) - 5:] == ".json"])
+        anime_number += len([i for i in os.listdir(directory) if
+                             os.path.isfile(os.path.join(directory, i))
+                             and i[len(i) - 5:] == ".json"])
+
+        print(anime_number)
+
+        def get_anime_list(fav=False):
+            path = os.path.join(directory, "Favorites" if fav else '')
+            for file in os.listdir(path):
+                if os.path.isfile(os.path.join(path, f"{file}")) and file != "anime_dict.json" \
+                        and file[len(file) - 5:] == ".json":
+                    anime = main.Anime(os.path.join(path, f"{file}"))
+                    if anime.last_search[0] < time.localtime()[2] or anime.last_search[1] < time.localtime()[1] \
+                            and not main.already_searched:
+                        step = math.ceil(100 / anime_number)
+                        try:
+                            self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}", step=step,
+                                                 small_font=True)
+                        except tk.TclError:
+                            pass
+                    self.fav_anime_list.append(anime) if fav else self.anime_list.append(anime)
+
+        get_anime_list(True)
 
         if self.config_screen.config_info["check_episodes"] == 1:
             main.already_searched = True
 
-        for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)) and file != "anime_dict.json" \
-                    and file[len(file) - 5:] == ".json":
-                anime = main.Anime(os.path.join(directory, file))
-                if anime.last_search[0] < time.localtime()[2] or anime.last_search[1] < time.localtime()[1] \
-                        and not main.already_searched:
-                    step = math.ceil(100 / len([i for i in os.listdir(directory) if
-                                                os.path.isfile(os.path.join(directory, i))
-                                                and i[len(i) - 5:] == ".json"]))
-                    try:
-                        self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}", step=step,
-                                             small_font=True)
-                    except tk.TclError:
-                        pass
-                self.anime_list.append(anime)
+        get_anime_list()
 
         return self.fav_anime_list + self.anime_list
 
     def draw_thumb(self, ani):
-        img_link, filename = download_thumb(ani)
-        with open(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}"), "wb") as image:
-            try:
-                image.write(requests.get(img_link, headers=headers).content)
-                img = Image.open(filename).convert("RGB") \
-                    .resize((self.screen_width // 4, (int(self.screen_height // (10 / 3)))))
-                img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png")}')
-                img.close()
-                img = Image.open(filename).convert("RGB") \
-                    .resize((self.screen_width // 4, (int(self.screen_height // (13 / 3)))))
-                img.save(f'{os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Pequenas/{ani.name}.png")}')
-            except UnidentifiedImageError:
-                print(f"Erro: Falha ao adicionar thumb do anime {ani.name}.")
-        os.remove(filename)
+        filename = os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png")
+        try:
+            img = Image.open(filename).convert("RGB") \
+                .resize((int(self.screen_width / 1920 * 360),
+                         (int(self.screen_height / 1080 * (280 if self.config_screen.config_info["show_name"]
+                                                           else 240)))))
+            if ani in self.fav_anime_list:
+                draw = ImageDraw.Draw(img)
+                font_ = ImageFont.truetype("font.ttf", 48)
+                draw.text((0, 0), u"\u2605", font=font_, fill=(0, 255, 0))
+            return enhance_image(img)
+        except UnidentifiedImageError:
+            print(f"Erro: Falha ao adicionar thumb do anime {ani.name}.")
 
     def load_anime_list(self, anime_list, n):
         for ani in anime_list:
@@ -789,23 +792,10 @@ class MainWindow(tk.Tk):
                     self.splash.finish()
             except tk.TclError:
                 pass
-            if not (os.path.isfile(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png" or
-                                                                         os.path.isfile(
-                                                                             os.path.join(os.path.expanduser("~"),
-                                                                                          f"Animes/Thumbs/Pequenas/"
-                                                                                          f"{ani.name}.png"))))):
-                self.draw_thumb(ani)
-                enhance_image(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Grandes/{ani.name}.png"))
-                enhance_image(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/Pequenas/{ani.name}.png"))
-            if not error:
-                if self.config_screen.config_info["show_name"] == 1:
-                    img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"),
-                                                          f"Animes/Thumbs/Grandes/{ani.name}.png"))
-                else:
-                    img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"),
-                                                          f"Animes/Thumbs/Pequenas/{ani.name}.png"))
-            else:
-                img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/animan-gui.png"))
+            if not (os.path.isfile(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png"))):
+                download_thumb(ani)
+            img = self.draw_thumb(ani) if not error else (
+                tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/animan-gui.png")))
 
             b = AniButton(self.scroller.sec_frame, img, n // 4, n % 4, ani)
             self.b_list.append([b, img])
@@ -818,6 +808,7 @@ class MainWindow(tk.Tk):
         self.anime_list.sort(key=lambda x: x.name)
         try:
             self.load_anime_list(self.fav_anime_list, n)
+            n = len(self.fav_anime_list)
             self.load_anime_list(self.anime_list, n)
         except IndexError:
             messagebox.showerror("Erro: Um erro inesperado aconteceu, por favor reinicie a aplicação.")
@@ -1122,23 +1113,24 @@ class AddAnimeDialog(tk.Toplevel):
             try:
                 r = requests.get(link, headers=headers)
             except requests.exceptions.MissingSchema:
-                messagebox.showwarning(message="URL inválido, por favor tente novamente.")
+                messagebox.showwarning(title="URL Inválido", message="URL inválido, por favor tente novamente.")
                 return False
             if r.status_code == 200:
                 return True
-            messagebox.showerror(message="Não é possível conectar a este URL, por favor " +
-                                         "cheque sua conexão com a internet e tente novamente.")
+            messagebox.showerror(title="Erro de Conexão", message="Não é possível conectar a este URL, por favor " +
+                                                                  "cheque sua conexão com a internet e "
+                                                                  "tente novamente.")
             return False
 
         if test_link() and name:
             self.withdraw()
-            messagebox.showinfo(message=f'Anime "{name}" adicionado com sucesso!' +
-                                        f'\nO aplicativo será reiniciado!')
+            messagebox.showinfo(title="Adicionar Anime", message=f'Anime "{name}" adicionado com sucesso!' +
+                                                                 f'\nO aplicativo será reiniciado!')
             main.add_anime(name, link)
             self.master.destroy()
             return MainWindow()
         elif not name:
-            return messagebox.showwarning(message="Por favor insira um nome!")
+            return messagebox.showwarning(title="Anime sem Nome", message="Por favor insira um nome!")
 
     def search_link(self, name):
         self.configure(cursor="watch")
@@ -1191,14 +1183,18 @@ def download_thumb(ani):
     if not os.path.isdir(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs")):
         os.mkdir(os.path.join(os.path.expanduser("~"), f"Animes/Thumbs"))
 
-    filename = os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}")
+    filename = os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png")
+
+    with open(filename, "wb") as image:
+        try:
+            image.write(requests.get(img_link, headers=headers).content)
+        except UnidentifiedImageError:
+            print(f"Erro: Falha ao adicionar thumb do anime {ani.name}.")
 
     return img_link, filename
 
 
-def enhance_image(image):
-    enh_image = Image.open(image)
-
+def enhance_image(enh_image):
     enh_col = ImageEnhance.Color(enh_image)
     color = 1.25
     enh_image = enh_col.enhance(color)
@@ -1211,7 +1207,7 @@ def enhance_image(image):
     sharpness = 2.0
     enh_image = enh_sha.enhance(sharpness)
 
-    enh_image.save(image)
+    return ImageTk.PhotoImage(enh_image)
 
 
 def check_internet():
@@ -1235,4 +1231,4 @@ if __name__ == '__main__':
         window = MainWindow()
         window.mainloop()
     except requests.exceptions.ConnectionError:
-        messagebox.showerror("Erro: Verifique sua conexão com a internet.")
+        messagebox.showerror(title="Erro de Conexão", message="Erro: Verifique sua conexão com a internet.")
