@@ -578,17 +578,17 @@ class Config(tk.Toplevel):
         self.configure(cursor="arrow")
         if event.x in range(self.width - 20, self.width) and event.y in range(21):
             self.withdraw()
-        if event.x in range(self.width - 50, self.width - 20) and event.y in range(85, 116):
+        if event.x in range(self.width - 50, self.width - 20) and event.y in range(130, 160):
             self.withdraw()
             color = askcolor(color=self.config_info["anime_color"])[1]
             self.change_color("anime", color)
             self.deiconify()
-        if event.x in range(self.width - 50, self.width - 20) and event.y in range(135, 166):
+        if event.x in range(self.width - 50, self.width - 20) and event.y in range(180, 210):
             self.withdraw()
             color = askcolor(color=self.config_info["button_color"])[1]
             self.change_color("button", color)
             self.deiconify()
-        if event.x in range(self.width - 50, self.width - 20) and event.y in range(185, 216):
+        if event.x in range(self.width - 50, self.width - 20) and event.y in range(230, 260):
             self.withdraw()
             color = askcolor(color=self.config_info["bg_color"])[1]
             self.change_color("background", color)
