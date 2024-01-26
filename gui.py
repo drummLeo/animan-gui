@@ -741,8 +741,6 @@ class MainWindow(tk.Tk):
                              os.path.isfile(os.path.join(directory, i))
                              and i[len(i) - 5:] == ".json"])
 
-        print(anime_number)
-
         def get_anime_list(fav=False):
             path = os.path.join(directory, "Favorites" if fav else '')
             for file in os.listdir(path):
@@ -777,7 +775,12 @@ class MainWindow(tk.Tk):
                                                            else 240)))))
             if ani in self.fav_anime_list:
                 draw = ImageDraw.Draw(img)
-                font_ = ImageFont.truetype("font.ttf", 48)
+                font_path = os.path.join(os.path.expanduser('~'), f"Animes/font.ttf")
+                if not os.path.isfile(font_path) and check_internet():
+                    with open(font_path, "wb") as file:
+                        file.write(requests.get("https://drive.usercontent.google.com/u/"
+                                                "0/uc?id=1DO7Eqo01NGHWTSMFWxuYKS1p4PFmd_wc&export=download").content)
+                font_ = ImageFont.truetype(font_path, 48)
                 draw.text((0, 0), u"\u2605", font=font_, fill=(0, 255, 0))
             return enhance_image(img)
         except UnidentifiedImageError:
