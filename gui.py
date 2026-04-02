@@ -9,6 +9,7 @@ import threading
 import time
 import tkinter as tk
 import webbrowser
+from pathlib import Path
 from tkinter import messagebox, ttk, font
 
 import requests
@@ -18,6 +19,12 @@ from bs4 import BeautifulSoup
 from tkinter.colorchooser import askcolor
 
 import main
+from main import ANIMES_DIR, HEADERS
+
+THUMBS_DIR = ANIMES_DIR / "Thumbs"
+FAVS_DIR = ANIMES_DIR / "Favorites"
+CONFIG_DIR = ANIMES_DIR / "Config"
+CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
 class Splash(tk.Toplevel):
@@ -30,16 +37,15 @@ class Splash(tk.Toplevel):
 
         self.geometry(f"{int(width / 1.8)}x540+{int(width / 4)}+{int(height / 4.2)}")
 
-        if not os.path.isdir(os.path.join(os.path.expanduser('~'), "Animes/Thumbs")):
-            os.mkdir(os.path.join(os.path.expanduser('~'), "Animes/Thumbs"))
+        THUMBS_DIR.mkdir(exist_ok=True)
 
-        if not os.path.isfile(os.path.join(os.path.expanduser('~'), "Animes/Thumbs/splash.png")):
-            image = requests.get("https://drive.google.com/u/0/uc?id=1UUo9u-TWCChxGlELXtPTf65JW2EfwxWb&export=download"
-                                 ).content
-            with open(os.path.join(os.path.expanduser('~'), "Animes/Thumbs/splash.png"), "wb") as file:
-                file.write(image)
+        splash_path = THUMBS_DIR / "splash.png"
+        if not splash_path.is_file():
+            splash_path.write_bytes(requests.get(
+                "https://drive.google.com/u/0/uc?id=1UUo9u-TWCChxGlELXtPTf65JW2EfwxWb&export=download"
+            ).content)
 
-        self.img = tk.PhotoImage(file=os.path.join(os.path.expanduser('~'), "Animes/Thumbs/splash.png"))
+        self.img = tk.PhotoImage(file=splash_path)
         self.load = tk.Canvas(self, bg="#574d4c")
         self.load.create_image(0, 35, anchor="nw", image=self.img)
         self.load.create_text(int(width / 1.6) // 2, 20, text="Inicializando...",
@@ -59,18 +65,14 @@ class Splash(tk.Toplevel):
         self.load.delete("text")
         self.load.create_rectangle(0, 520, int(self.percentage / 100 * self.winfo_width()), 540, outline="green",
                                    fill="purple", tags="rect")
-        if not small_font:
-            self.load.create_text(self.winfo_width() // 2, 20, text=f"{text}... {self.percentage}%",
-                                  font=anime_font(s=28), tags="text")
-        else:
-            self.load.create_text(self.winfo_width() // 2, 20, text=f"{text}... {self.percentage}%",
-                                  font=anime_font(), tags="text")
+        font_ = anime_font() if small_font else anime_font(s=28)
+        self.load.create_text(self.winfo_width() // 2, 20, text=f"{text}... {self.percentage}%",
+                              font=font_, tags="text")
         self.load.update()
 
     def finish(self):
         self.destroy()
         self.root.deiconify()
-        return
 
 
 class ContextMenu(tk.Listbox):
@@ -83,20 +85,14 @@ class ContextMenu(tk.Listbox):
         self.popup_menu = tk.Menu(self, tearoff=0, background='#808080')
         if self.anime_ is not None:
             if self.anime_ not in self.parent.root.fav_anime_list:
-                self.popup_menu.add_command(label="Favoritar",
-                                            command=self.add_to_fav)
+                self.popup_menu.add_command(label="Favoritar", command=self.add_to_fav)
             else:
-                self.popup_menu.add_command(label="Remover fav.",
-                                            command=self.remove_fav)
-            self.popup_menu.add_command(label="Renomear",
-                                        command=self.rename_anime)
-            self.popup_menu.add_command(label="Remover Anime",
-                                        command=self.remove_anime)
-            self.popup_menu.add_command(label="Ver no site",
-                                        command=self.anime_.call)
+                self.popup_menu.add_command(label="Remover fav.", command=self.remove_fav)
+            self.popup_menu.add_command(label="Renomear", command=self.rename_anime)
+            self.popup_menu.add_command(label="Remover Anime", command=self.remove_anime)
+            self.popup_menu.add_command(label="Ver no site", command=self.anime_.call)
         else:
-            self.popup_menu.add_command(label=label,
-                                        command=command)
+            self.popup_menu.add_command(label=label, command=command)
 
         parent.bind("<Button-3>", self.popup)
 
@@ -111,10 +107,10 @@ class ContextMenu(tk.Listbox):
         if messagebox.askyesno(message=f'Tem certeza que quer remover o anime "{self.anime_.name}"?'):
             main.remove_anime(self.anime_)
             try:
-                os.remove(os.path.join(os.path.expanduser('~'), f"Animes/Thumbs/{self.anime_.name}.png"))
+                (THUMBS_DIR / f"{self.anime_.name}.png").unlink()
             except OSError:
                 pass
-            messagebox.showinfo(message=f'Anime "{self.anime_.name}" deletado com sucesso! ' +
+            messagebox.showinfo(message=f'Anime "{self.anime_.name}" deletado com sucesso! '
                                         f'O aplicativo será reiniciado!')
             self.parent.master.master.master.master.destroy()
             return MainWindow()
@@ -134,60 +130,56 @@ class ContextMenu(tk.Listbox):
         new_name.bind("<Return>", lambda e: rename())
 
         def rename():
-            if new_name.get().rstrip():
-                name = new_name.get().rstrip()
-                anime_info = dict()
-                with open(self.anime_.file_name, 'r') as file:
-                    anime_info.update(json.load(file))
-                    anime_info['name'] = name
-                with open(self.anime_.file_name, 'w') as file:
-                    json.dump(anime_info, file)
-                os.rename(self.anime_.file_name, os.path.join(os.path.expanduser('~'), f"Animes/{name}.json"))
-                try:
-                    os.rename(os.path.join(os.path.expanduser('~'), f"Animes/Thumbs/{self.anime_.name}.png"),
-                              os.path.join(os.path.expanduser('~'), f"Animes/Thumbs/{name}.png"))
-                except OSError:
-                    pass
-                if self.anime_ in self.parent.root.fav_anime_list:
-                    if self.anime_.new_episode:
-                        self.parent.configure(text=name + " \U00002605" + "\n(Novo Episódio!)")
-                    else:
-                        self.parent.configure(text=name + " \U00002605")
-                else:
-                    if self.anime_.new_episode:
-                        self.parent.configure(text=name + "\n(Novo Episódio!)")
-                    else:
-                        self.parent.configure(text=name)
+            name = new_name.get().rstrip()
+            if not name:
+                return
+            with open(self.anime_.file_path, 'r') as f:
+                anime_info = json.load(f)
+            anime_info['name'] = name
+            with open(self.anime_.file_path, 'w') as f:
+                json.dump(anime_info, f)
 
-                self.anime_.name = name
-                self.parent.configure(font=anime_font(self.anime_))
+            new_path = ANIMES_DIR / f"{name}.json"
+            self.anime_.file_path.rename(new_path)
+            self.anime_.file_path = new_path
 
-                self.anime_.file_name = os.path.join(os.path.expanduser('~'), f"Animes/{name}.json")
+            try:
+                (THUMBS_DIR / f"{self.anime_.name}.png").rename(THUMBS_DIR / f"{name}.png")
+            except OSError:
+                pass
 
-                root.destroy()
-                messagebox.showinfo(message="Anime renomeado com sucesso!")
+            if self.anime_ in self.parent.root.fav_anime_list:
+                label_text = name + " \U00002605"
+            else:
+                label_text = name
+            if self.anime_.new_episode:
+                label_text += "\n(Novo Episódio!)"
+            self.parent.configure(text=label_text)
 
-        button = tk.Button(root, text="Renomear", command=rename, font=button_font(),
-                           background='#3CB371', activebackground='#8FBC8F', fg="black")
-        button.pack(anchor='s', pady=10, side=tk.BOTTOM)
+            self.anime_.name = name
+            self.parent.configure(font=anime_font(self.anime_))
+
+            root.destroy()
+            messagebox.showinfo(message="Anime renomeado com sucesso!")
+
+        tk.Button(root, text="Renomear", command=rename, font=button_font(),
+                  background='#3CB371', activebackground='#8FBC8F', fg="black").pack(
+            anchor='s', pady=10, side=tk.BOTTOM)
 
     def add_to_fav(self):
-        directory = os.path.join(os.path.expanduser("~"), "Animes")
-        if not os.path.isdir(os.path.join(directory, "Favorites")):
-            os.mkdir(os.path.join(directory, "Favorites"))
-        os.rename(os.path.join(directory, f"{self.anime_.name}.json"),
-                  os.path.join(directory, f"Favorites/{self.anime_.name}.json"))
-        self.anime_.file_name = os.path.join(directory, f"Favorites/{self.anime_.name}.json")
+        FAVS_DIR.mkdir(exist_ok=True)
+        new_path = FAVS_DIR / f"{self.anime_.name}.json"
+        self.anime_.file_path.rename(new_path)
+        self.anime_.file_path = new_path
         messagebox.showinfo(message="Favorito Adicionado! O programa será reiniciado.")
         self.parent.root.destroy()
         return MainWindow()
 
     def remove_fav(self):
-        directory = os.path.join(os.path.expanduser("~"), "Animes")
         try:
-            os.rename(os.path.join(directory, f"Favorites/{self.anime_.name}.json"),
-                      os.path.join(directory, f"{self.anime_.name}.json"))
-            self.anime_.file_name = os.path.join(directory, f"{self.anime_.name}.json")
+            new_path = ANIMES_DIR / f"{self.anime_.name}.json"
+            (FAVS_DIR / f"{self.anime_.name}.json").rename(new_path)
+            self.anime_.file_path = new_path
             messagebox.showinfo(message="Favorito Removido! O programa será reiniciado.")
             self.parent.root.destroy()
             return MainWindow()
@@ -211,28 +203,25 @@ class Scroller:
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
         def _on_canvas_configure(e):
             self.canvas.itemconfig("scroller_window", width=e.width)
             self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
         self.canvas.bind("<Configure>", _on_canvas_configure)
         self.bind_wheel()
 
         self.sec_frame = tk.Frame(self.canvas, background=background)
-
         self.canvas.create_window((0, 0), window=self.sec_frame, anchor="nw", tags="scroller_window")
 
         self.must_scroll = True
 
     def mouse_wheel_handler(self, event):
-        if self.must_scroll:
-            if isinstance(event.widget, self.objects) or event.widget is self.sec_frame or event.widget is self.canvas:
-                if event.num == 5 or event.delta < 0:
-                    return 1
-                return -1
-            else:
-                return 0
-        else:
+        if not self.must_scroll:
             return 0
+        if isinstance(event.widget, self.objects) or event.widget is self.sec_frame or event.widget is self.canvas:
+            return 1 if (event.num == 5 or event.delta < 0) else -1
+        return 0
 
     def bind_wheel(self):
         self.must_scroll = True
@@ -326,10 +315,9 @@ class VideoDialog(tk.Toplevel):
 
     def _show_browser_fallback(self):
         self.progress.pack_forget()
-        btn = tk.Button(self, text="Abrir no navegador", bg="#3CB371", fg="black",
-                        font=button_font(), activebackground=highlight("#3CB371"),
-                        activeforeground="black", command=self._open_browser)
-        btn.pack(pady=(4, 10))
+        tk.Button(self, text="Abrir no navegador", bg="#3CB371", fg="black",
+                  font=button_font(), activebackground=highlight("#3CB371"),
+                  activeforeground="black", command=self._open_browser).pack(pady=(4, 10))
         self.geometry("620x185")
 
     def _open_browser(self):
@@ -340,10 +328,8 @@ class VideoDialog(tk.Toplevel):
 
     def _extract_video_url(self, ep_url):
         """Retorna (video_url, user_agent) via Blogger batchexecute interceptado."""
-        import json as _json
         from playwright.sync_api import sync_playwright
 
-        # {itag: url} — coletamos todos os formatos e escolhemos o melhor
         formats = {}
 
         def parse_batch(body):
@@ -351,11 +337,11 @@ class VideoDialog(tk.Toplevel):
             if idx == -1:
                 return
             try:
-                outer, _ = _json.JSONDecoder().raw_decode(body, idx)
+                outer, _ = json.JSONDecoder().raw_decode(body, idx)
                 for item in outer:
                     if isinstance(item, list) and len(item) > 2 and isinstance(item[2], str):
                         try:
-                            inner = _json.loads(item[2])
+                            inner = json.loads(item[2])
                             if not isinstance(inner, list):
                                 continue
                             entries = inner[2] if len(inner) > 2 and isinstance(inner[2], list) else []
@@ -364,7 +350,6 @@ class VideoDialog(tk.Toplevel):
                                         and isinstance(entry[0], str)
                                         and 'googlevideo' in entry[0]):
                                     continue
-                                # entry[1] é [itag] ou [[itag, ...]]
                                 itag = 0
                                 if len(entry) > 1:
                                     tag_field = entry[1]
@@ -373,7 +358,7 @@ class VideoDialog(tk.Toplevel):
                                     elif isinstance(tag_field, int):
                                         itag = tag_field
                                 formats[itag] = entry[0]
-                        except (_json.JSONDecodeError, TypeError, IndexError):
+                        except (json.JSONDecodeError, TypeError, IndexError):
                             continue
             except Exception:
                 pass
@@ -397,10 +382,8 @@ class VideoDialog(tk.Toplevel):
         if not formats:
             return None, None
 
-        # Preferência: 22 (720p) > 18 (360p) > qualquer outro
         preferred = [22, 18]
-        best_url = next((formats[t] for t in preferred if t in formats),
-                        formats[max(formats)])
+        best_url = next((formats[t] for t in preferred if t in formats), formats[max(formats)])
         return best_url, chromium_ua
 
     # ── watch ─────────────────────────────────────────────────────────────────
@@ -431,10 +414,9 @@ class VideoDialog(tk.Toplevel):
             except (FileNotFoundError, OSError):
                 continue
 
-        # Nenhum player — baixar para temp e abrir com player padrão
         self._set_status("Baixando para reprodução local...")
         self._show_progress()
-        self._download_url(video_url, ua, tempfile.mkdtemp(prefix="animan_"), "temp", open_after=True)
+        self._download_url(video_url, ua, Path(tempfile.mkdtemp(prefix="animan_")), "temp", open_after=True)
 
     # ── download ──────────────────────────────────────────────────────────────
 
@@ -456,31 +438,28 @@ class VideoDialog(tk.Toplevel):
             self.after(0, self._show_browser_fallback)
             return
 
-        dest = os.path.join(os.path.expanduser("~"), "Videos", "Animes", self.anime_.name)
-        os.makedirs(dest, exist_ok=True)
+        dest = Path.home() / "Videos" / "Animes" / self.anime_.name
+        dest.mkdir(parents=True, exist_ok=True)
         ep_label = str(self.ep_num + 1).zfill(2)
         self._download_url(video_url, ua, dest, ep_label, open_after=True)
 
-    def _download_url(self, video_url, ua, dest, ep_label, open_after=False):
+    def _download_url(self, video_url, ua, dest: Path, ep_label, open_after=False):
         """Baixa MP4 em partes paralelas (cada parte em arquivo temp próprio) e concatena."""
-        import math
-        filepath = os.path.join(dest, f"Episodio {ep_label}.mp4")
+        filepath = dest / f"Episodio {ep_label}.mp4"
         CONNECTIONS = 3
         MAX_RETRIES = 5
 
         try:
-            req_headers = {'User-Agent': ua or 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            req_headers = {'User-Agent': ua or HEADERS['User-Agent'],
                            'Referer': 'https://www.blogger.com/'}
 
-            head = requests.head(video_url, headers=req_headers, timeout=15,
-                                 allow_redirects=True)
+            head = requests.head(video_url, headers=req_headers, timeout=15, allow_redirects=True)
             total = int(head.headers.get('content-length', 0))
             accepts_ranges = head.headers.get('accept-ranges', '') == 'bytes'
 
             start_time = time.time()
 
             if not total or not accepts_ranges:
-                # Fallback: conexão única
                 with requests.get(video_url, headers=req_headers, stream=True,
                                   timeout=30, allow_redirects=True) as r:
                     r.raise_for_status()
@@ -503,8 +482,8 @@ class VideoDialog(tk.Toplevel):
                 chunk_size = math.ceil(total / CONNECTIONS)
                 downloaded = [0] * CONNECTIONS
                 lock = threading.Lock()
-                tmp_dir = tempfile.mkdtemp(prefix="animan_dl_")
-                part_files = [os.path.join(tmp_dir, f"part_{i:03d}") for i in range(CONNECTIONS)]
+                tmp_dir = Path(tempfile.mkdtemp(prefix="animan_dl_"))
+                part_files = [tmp_dir / f"part_{i:03d}" for i in range(CONNECTIONS)]
                 errors = [None] * CONNECTIONS
 
                 def fetch_part(idx, start, end):
@@ -523,7 +502,7 @@ class VideoDialog(tk.Toplevel):
                                             with lock:
                                                 downloaded[idx] += len(chunk)
                                             current += len(chunk)
-                            return  # sucesso
+                            return
                         except Exception as e:
                             if attempt < MAX_RETRIES - 1:
                                 time.sleep(1.5 * (attempt + 1))
@@ -556,16 +535,14 @@ class VideoDialog(tk.Toplevel):
                 if failed:
                     raise failed[0]
 
-                # Concatenar partes em ordem
                 self._set_status("Juntando partes...")
                 with open(filepath, 'wb') as out:
                     for pf in part_files:
-                        if os.path.isfile(pf):
-                            with open(pf, 'rb') as pf_:
-                                out.write(pf_.read())
-                            os.remove(pf)
+                        if pf.is_file():
+                            out.write(pf.read_bytes())
+                            pf.unlink()
                 try:
-                    os.rmdir(tmp_dir)
+                    tmp_dir.rmdir()
                 except OSError:
                     pass
 
@@ -581,22 +558,21 @@ class EpButton(tk.Button):
     def __init__(self, num, ep_window, ep, anime_, tooltip):
         self.anime_ = anime_
         self.num = num
-        self.anime_info = dict()
         self.ep = ep
 
         if '. "ep"' in self.ep:
             self.ep = self.ep[:self.ep.find('"')] + '"Nenhum titulo oficial ainda."'
 
-        with open(self.anime_.file_name, 'r') as file:
-            self.anime_info.update(json.load(file))
+        with open(self.anime_.file_path, 'r') as f:
+            self.anime_info = json.load(f)
 
         self.ep_window = ep_window
         tk.Button.__init__(self, self.ep_window, text=self.ep, height=1, width=100, command=self.call_anime,
                            bg="#337ED7", activebackground="#6690D0", font=button_font(),
                            fg='black', activeforeground='yellow', borderwidth=5, anchor='w', cursor="hand2")
-        self.configure(bg=self.ep_window.master.master.master.root.config_screen.config_info["anime_color"],
-                       activebackground=highlight(self.ep_window.master.master.master
-                                                  .root.config_screen.config_info["anime_color"]))
+
+        cfg = self.ep_window.master.master.master.root.config_screen.config_info
+        self.configure(bg=cfg["anime_color"], activebackground=highlight(cfg["anime_color"]))
 
         self.bind("<Enter>", lambda e: tooltip.configure(text=self.ep))
 
@@ -606,20 +582,16 @@ class EpButton(tk.Button):
 
     def call_anime(self):
         self.configure(bg="grey")
-
         self.anime_.last_episode = self.num
-        with open(self.anime_.file_name, 'w') as file:
-            self.anime_info['last_episode'] = self.num
-            json.dump(self.anime_info, file, indent=4)
-
+        self.anime_info['last_episode'] = self.num
+        with open(self.anime_.file_path, 'w') as f:
+            json.dump(self.anime_info, f, indent=4)
         ep_url = list(self.anime_.episodes.values())[self.num]
         root = self.ep_window.master.master.master.root
         VideoDialog(root, self.anime_, self.num, ep_url)
 
     def is_last(self):
-        if self.anime_info['last_episode'] == self.num:
-            return True
-        return False
+        return self.anime_info['last_episode'] == self.num
 
 
 class EpisodesWindow(tk.Toplevel):
@@ -636,9 +608,8 @@ class EpisodesWindow(tk.Toplevel):
 
         self.button_list = []
 
-        self.ep_label = tk.Label(self, text="Episódios:", font=button_font(s=20),
-                                 bg="#363636", fg="white")
-        self.ep_label.pack(pady=5)
+        tk.Label(self, text="Episódios:", font=button_font(s=20),
+                 bg="#363636", fg="white").pack(pady=5)
 
         self.scroller = Scroller(self, background=root.config_screen.config_info["bg_color"],
                                  objects=(EpisodesWindow, EpButton))
@@ -649,66 +620,42 @@ class EpisodesWindow(tk.Toplevel):
         self.tooltip = tk.Label(self.canvas, bg="#363636", fg="white", anchor='w')
         self.tooltip.pack(side=tk.LEFT, padx=12, pady=8)
 
-        self.canvas.exit_button = tk.Button(self.canvas, text="Sair", width=14, height=0,
-                                            background=self.root.config_screen.config_info["button_color"],
-                                            command=self.destroy, foreground="black", activeforeground="black",
-                                            activebackground=highlight(
-                                                self.root.config_screen.config_info["button_color"]),
-                                            font=button_font())
+        btn_color = self.root.config_screen.config_info["button_color"]
+        self.canvas.exit_button = tk.Button(
+            self.canvas, text="Sair", width=14, height=0,
+            background=btn_color, command=self.destroy,
+            foreground="black", activeforeground="black",
+            activebackground=highlight(btn_color), font=button_font())
         self.canvas.exit_button.pack(side=tk.RIGHT, anchor="e", padx=12, pady=8)
 
         if check_internet():
             eps = self.anime_.get_episodes()
             season_breaks = getattr(self.anime_, 'season_breaks', {})
             show_seasons = len(season_breaks) > 1
-            n = 0
-            for ep in eps:
+            for n, ep in enumerate(eps):
                 if show_seasons and n in season_breaks:
-                    snum = season_breaks[n]
                     tk.Label(self.scroller.sec_frame,
-                             text=f"  Temporada {snum}",
+                             text=f"  Temporada {season_breaks[n]}",
                              bg="#222222", fg="white",
                              font=button_font(s=13), anchor='w',
                              height=1).pack(fill=tk.X, pady=(6, 0))
                 self.button_list.append(EpButton(n, self.scroller.sec_frame, ep, self.anime_, self.tooltip))
-                n += 1
         else:
             self.root.configure(cursor="arrow")
             self.destroy()
             messagebox.showerror(message="Erro: verifique sua conexão com a internet.")
 
         width = int(screen_width / 1.52)
-
-        height = (len(self.button_list) + 3) * 45
-        if height > 620:
-            height = 620
-        else:
+        height = min((len(self.button_list) + 3) * 45, 620)
+        if height < 620:
             self.scroller.unbind_wheel()
 
         self.geometry(f"{width}x{height}")
-
         root.configure(cursor="arrow")
 
 
-def highlight(color):
-    output = '#'
-    for n in color[1:]:
-        if n in ['0', '1', '2', '3', '4', '5', '6', '7', '8']:
-            output += str(int(n) + 1)
-        elif n == '9':
-            output += 'a'
-        elif n == 'a':
-            output += 'b'
-        elif n == 'b':
-            output += 'c'
-        elif n == 'c':
-            output += 'd'
-        elif n == 'd':
-            output += 'e'
-        else:
-            output += 'f'
-
-    return output
+def highlight(color: str) -> str:
+    return '#' + ''.join(format(min(int(c, 16) + 1, 15), 'x') for c in color[1:])
 
 
 class AniButton(tk.Button):
@@ -727,16 +674,16 @@ class AniButton(tk.Button):
         if show_name:
             height += 50
         tk.Button.__init__(self, root, image=picture, borderwidth=10, text=display_text,
-                           compound=compound_mode, width=width, height=height, background="#337ED7", font=anime_font(anime_),
-                           activebackground='#6690D0', foreground="black", activeforeground="yellow",
-                           wraplength=width - 20)
+                           compound=compound_mode, width=width, height=height, background="#337ED7",
+                           font=anime_font(anime_), activebackground='#6690D0',
+                           foreground="black", activeforeground="yellow", wraplength=width - 20)
 
-        self.configure(bg=self.root.config_screen.config_info["anime_color"])
-        self.configure(activebackground=highlight(self.root.config_screen.config_info["anime_color"]))
+        cfg = self.root.config_screen.config_info
+        self.configure(bg=cfg["anime_color"], activebackground=highlight(cfg["anime_color"]))
 
         self.grid(row=row, column=column, padx=3, pady=4)
 
-        self.bind("<Enter>", lambda e: self.root.canvas.tooltip.configure(text=f'"{self.anime_.name}"'))
+        self.bind("<Enter>", lambda e: self.root.canvas.tooltip.configure(text=f'"{anime_.name}"'))
         self.bind("<ButtonRelease-1>", self.call_episodes)
 
         self.anime_ = anime_
@@ -754,7 +701,7 @@ class Config(tk.Toplevel):
         self.root = root
         self.overrideredirect(True)
 
-        self.config_info = dict()
+        self.config_info = {}
         self.read_config()
 
         self.title("Configurações")
@@ -772,7 +719,6 @@ class Config(tk.Toplevel):
         self.canvas.create_text(120, 50, font=button_font(), fill="#3CB371", text="Checar Episódios:")
 
         self.values_list = ["Checar Todos", "Checar Apenas Favoritos", "Nunca Checar"]
-
         self.check_episode_config = ttk.Combobox(self.canvas, values=self.values_list, state="readonly",
                                                  font=button_font(s=10), foreground="black", width=21)
         self.check_episode_config.current(self.config_info["check_episodes"])
@@ -820,25 +766,25 @@ class Config(tk.Toplevel):
         self.bind("<B1-Motion>", self.move)
         self.check_episode_config.bind("<<ComboboxSelected>>", lambda e: self.write_config(
             {"check_episodes": self.values_list.index(self.check_episode_config.get())}))
+
         def _apply_show_name(_e):
             self.write_config({"show_name": 1 - self.show_name_values.index(self.show_name_config.get())})
             self.root.reload_b_list()
+
         self.show_name_config.bind("<<ComboboxSelected>>", _apply_show_name)
         self.root.bind("<Unmap>", lambda e: self.withdraw())
 
-    def write_config(self, config):
-        with open(os.path.join(os.path.expanduser("~"), "Animes/Config/config.json"), 'w') as file:
-            for n in range(len(config)):
-                self.config_info[list(config.keys())[n]] = list(config.values())[n]
-            json.dump(self.config_info, file, indent=4)
+    def write_config(self, config: dict):
+        self.config_info.update(config)
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(self.config_info, f, indent=4)
         self.read_config()
 
     def read_config(self):
-        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Config")):
-            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Config"))
-        if os.path.isfile(os.path.join(os.path.expanduser("~"), "Animes/Config/config.json")):
-            with open(os.path.join(os.path.expanduser("~"), "Animes/Config/config.json"), 'r') as file:
-                self.config_info = json.load(file)
+        CONFIG_DIR.mkdir(exist_ok=True)
+        if CONFIG_FILE.is_file():
+            with open(CONFIG_FILE, 'r') as f:
+                self.config_info = json.load(f)
             if "show_name" not in self.config_info:
                 self.write_config({"show_name": 1})
         else:
@@ -846,43 +792,42 @@ class Config(tk.Toplevel):
                                "button_color": "#3CB371", "bg_color": "#123456", "show_name": 1})
 
     def change_color(self, item, color):
-        if color is not None:
-            if item == "anime":
-                self.write_config({"anime_color": color})
-                self.canvas.delete("anime_color_text")
-                self.canvas.create_text(self.width - 110, 100, font=button_font(s=16),
-                                        fill=self.config_info["anime_color"],
-                                        text=self.config_info["anime_color"], tags="anime_color_text")
-                self.canvas.create_rectangle(self.width - 50, 85, self.width - 20, 115,
-                                             fill=self.config_info[f"anime_color"])
-                for button in self.root.b_list:
-                    button[0].configure(bg=self.config_info["anime_color"])
-                    button[0].configure(activebackground=highlight(self.config_info["anime_color"]))
-            if item == "button":
-                self.write_config({"button_color": color})
-                self.canvas.delete("button_color_text")
-                self.canvas.create_text(self.width - 110, 150, font=button_font(s=16),
-                                        fill=self.config_info["button_color"],
-                                        text=self.config_info["button_color"], tags="button_color_text")
-                self.canvas.create_rectangle(self.width - 50, 135, self.width - 20, 165,
-                                             fill=self.config_info[f"button_color"])
-                self.reset_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.add_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.site_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.config_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.add_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.exit_button.configure(bg=color, activebackground=highlight(color))
-                self.root.canvas.rec_button.configure(bg=color, activebackground=highlight(color))
-            if item == "background":
-                self.write_config({"bg_color": color})
-                self.canvas.delete("bg_color_text")
-                self.canvas.create_text(self.width - 110, 200, font=button_font(s=16),
-                                        fill=self.config_info["bg_color"],
-                                        text=self.config_info["bg_color"], tags="bg_color_text")
-                self.canvas.create_rectangle(self.width - 50, 185, self.width - 20, 215,
-                                             fill=self.config_info[f"bg_color"])
-                self.root.scroller.sec_frame.configure(bg=color)
-                self.root.scroller.canvas.configure(bg=color)
+        if color is None:
+            return
+        if item == "anime":
+            self.write_config({"anime_color": color})
+            self.canvas.delete("anime_color_text")
+            self.canvas.create_text(self.width - 110, 100, font=button_font(s=16),
+                                    fill=self.config_info["anime_color"],
+                                    text=self.config_info["anime_color"], tags="anime_color_text")
+            self.canvas.create_rectangle(self.width - 50, 85, self.width - 20, 115,
+                                         fill=self.config_info["anime_color"])
+            for button in self.root.b_list:
+                button[0].configure(bg=self.config_info["anime_color"],
+                                    activebackground=highlight(self.config_info["anime_color"]))
+        elif item == "button":
+            self.write_config({"button_color": color})
+            self.canvas.delete("button_color_text")
+            self.canvas.create_text(self.width - 110, 150, font=button_font(s=16),
+                                    fill=self.config_info["button_color"],
+                                    text=self.config_info["button_color"], tags="button_color_text")
+            self.canvas.create_rectangle(self.width - 50, 135, self.width - 20, 165,
+                                         fill=self.config_info["button_color"])
+            self.reset_button.configure(bg=color, activebackground=highlight(color))
+            for btn in (self.root.canvas.add_button, self.root.canvas.site_button,
+                        self.root.canvas.config_button, self.root.canvas.exit_button,
+                        self.root.canvas.rec_button):
+                btn.configure(bg=color, activebackground=highlight(color))
+        elif item == "background":
+            self.write_config({"bg_color": color})
+            self.canvas.delete("bg_color_text")
+            self.canvas.create_text(self.width - 110, 200, font=button_font(s=16),
+                                    fill=self.config_info["bg_color"],
+                                    text=self.config_info["bg_color"], tags="bg_color_text")
+            self.canvas.create_rectangle(self.width - 50, 185, self.width - 20, 215,
+                                         fill=self.config_info["bg_color"])
+            self.root.scroller.sec_frame.configure(bg=color)
+            self.root.scroller.canvas.configure(bg=color)
 
     def local_event(self, event):
         self.configure(cursor="arrow")
@@ -890,29 +835,24 @@ class Config(tk.Toplevel):
             self.withdraw()
         if event.x in range(self.width - 50, self.width - 20) and event.y in range(85, 116):
             self.withdraw()
-            color = askcolor(color=self.config_info["anime_color"])[1]
-            self.change_color("anime", color)
+            self.change_color("anime", askcolor(color=self.config_info["anime_color"])[1])
             self.deiconify()
         if event.x in range(self.width - 50, self.width - 20) and event.y in range(135, 166):
             self.withdraw()
-            color = askcolor(color=self.config_info["button_color"])[1]
-            self.change_color("button", color)
+            self.change_color("button", askcolor(color=self.config_info["button_color"])[1])
             self.deiconify()
         if event.x in range(self.width - 50, self.width - 20) and event.y in range(185, 216):
             self.withdraw()
-            color = askcolor(color=self.config_info["bg_color"])[1]
-            self.change_color("background", color)
+            self.change_color("background", askcolor(color=self.config_info["bg_color"])[1])
             self.deiconify()
 
     def move(self, event):
         if event.y < 30 and event.x < self.width - 25 and event.widget is self.canvas:
             self.configure(cursor="fleur")
             if event.x_root <= self.winfo_x() + int(event.x + self.width / 2):
-                self.geometry(f"{self.width}x540+{event.x_root - int(self.width / 2)}"
-                              f"+{event.y_root - 10}")
+                self.geometry(f"{self.width}x540+{event.x_root - int(self.width / 2)}+{event.y_root - 10}")
             else:
-                self.geometry(f"{self.width}x540+{event.x_root - int(event.x / 1.005)}"
-                              f"+{event.y_root + 10}")
+                self.geometry(f"{self.width}x540+{event.x_root - int(event.x / 1.005)}+{event.y_root + 10}")
             self.update()
 
     def redefine(self):
@@ -930,9 +870,7 @@ class Config(tk.Toplevel):
 class ButtonCanvas(tk.Canvas):
     def __init__(self, root):
         tk.Canvas.__init__(self, root, bg="#363636")
-
         self.root = root
-
         self.pack(side=tk.BOTTOM, anchor="sw", padx=12, pady=8, fill=tk.X)
 
         self.add_button = tk.Button(self, text="Adicionar Anime", width=14, height=0, background='#3CB371',
@@ -965,7 +903,6 @@ class ButtonCanvas(tk.Canvas):
 class MainWindow(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
-
         self.withdraw()
 
         self.config_screen = Config(self)
@@ -986,7 +923,7 @@ class MainWindow(tk.Tk):
         if self.screen_height <= 768:
             self.screen_height += 16
         _btn_w = int(self.screen_width // 5.333)
-        _w = 4 * (_btn_w + 20) + 30   # 4 buttons (width + 2×borderwidth) + scrollbar/padding
+        _w = 4 * (_btn_w + 20) + 30
         _h = int(self.screen_height // 1.13)
         _x = (self.winfo_screenwidth() - _w) // 2
         _y = (self.winfo_screenheight() - _h) // 2
@@ -995,16 +932,7 @@ class MainWindow(tk.Tk):
         self.configure(background='#1C1C1C')
 
         self.canvas = ButtonCanvas(self)
-        self.canvas.add_button.configure(bg=self.config_screen.config_info["button_color"],
-                                         activebackground=highlight(self.config_screen.config_info["button_color"]))
-        self.canvas.site_button.configure(bg=self.config_screen.config_info["button_color"],
-                                          activebackground=highlight(self.config_screen.config_info["button_color"]))
-        self.canvas.config_button.configure(bg=self.config_screen.config_info["button_color"],
-                                            activebackground=highlight(self.config_screen.config_info["button_color"]))
-        self.canvas.exit_button.configure(bg=self.config_screen.config_info["button_color"],
-                                          activebackground=highlight(self.config_screen.config_info["button_color"]))
-        self.canvas.rec_button.configure(bg=self.config_screen.config_info["button_color"],
-                                         activebackground=highlight(self.config_screen.config_info["button_color"]))
+        self._apply_button_color(self.config_screen.config_info["button_color"])
         self.canvas.tooltip = tk.Label(self.canvas, bg="#363636", fg="white", font=button_font(s=14))
         self.canvas.tooltip.pack(anchor="s", fill=tk.BOTH, expand=1)
 
@@ -1025,19 +953,17 @@ class MainWindow(tk.Tk):
         except tk.TclError:
             self.step = 1
 
-        if not os.path.isdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs")):
-            os.mkdir(os.path.join(os.path.expanduser("~"), "Animes/Thumbs"))
+        THUMBS_DIR.mkdir(exist_ok=True)
 
+        icon_path = THUMBS_DIR / "animan-gui.png"
         try:
-            self.iconphoto(False, tk.PhotoImage(file=os.path.join(
-                os.path.expanduser("~"), "Animes/Thumbs/animan-gui.png")))
+            self.iconphoto(False, tk.PhotoImage(file=icon_path))
         except tk.TclError:
             try:
-                with open(os.path.join(os.path.expanduser("~"), "Animes/Thumbs/animan-gui.png"), 'wb') as file:
-                    file.write(requests.get("https://drive.google.com/u/0/" +
-                                            "uc?id=1bDKMG7CCN7yfmdJY5Z8VNqS1e6oID5gl&export=download").content)
-                self.iconphoto(False, tk.PhotoImage(file=os.path.join(
-                    os.path.expanduser("~"), "Animes/Thumbs/animan-gui.png")))
+                icon_path.write_bytes(requests.get(
+                    "https://drive.google.com/u/0/uc?id=1bDKMG7CCN7yfmdJY5Z8VNqS1e6oID5gl&export=download"
+                ).content)
+                self.iconphoto(False, tk.PhotoImage(file=icon_path))
                 self.splash.load_bar(text="Ícone", step=0)
             except tk.TclError:
                 pass
@@ -1050,95 +976,77 @@ class MainWindow(tk.Tk):
         except tk.TclError:
             pass
 
+    def _apply_button_color(self, btn_color: str):
+        for btn in (self.canvas.add_button, self.canvas.site_button, self.canvas.config_button,
+                    self.canvas.exit_button, self.canvas.rec_button):
+            btn.configure(bg=btn_color, activebackground=highlight(btn_color))
+
     def get_anime_list(self):
-        directory = os.path.join(os.path.expanduser("~"), "Animes")
+        ANIMES_DIR.mkdir(exist_ok=True)
+        FAVS_DIR.mkdir(exist_ok=True)
 
-        if not os.path.isdir(directory):
-            os.mkdir(directory)
-        if not os.path.isdir(os.path.join(directory, "Favorites")):
-            os.mkdir(os.path.join(directory, "Favorites"))
+        check_config = self.config_screen.config_info["check_episodes"]
+        # 0 = check all, 1 = check favorites only, 2 = never check
 
-        if self.config_screen.config_info["check_episodes"] == 2:
-            main.already_searched = True
+        fav_files = [f for f in FAVS_DIR.iterdir() if f.is_file() and f.suffix == ".json"]
+        fav_step = max(1, math.ceil(100 / len(fav_files))) if fav_files else 1
+        for file in fav_files:
+            try:
+                anime = main.Anime(file)
+            except json.decoder.JSONDecodeError:
+                continue
+            if check_config != 2 and anime.needs_check():
+                try:
+                    self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}",
+                                         step=fav_step, small_font=True)
+                except tk.TclError:
+                    pass
+                anime.check_episodes()
+            self.fav_anime_list.append(anime)
 
-        for file in os.listdir(os.path.join(directory, "Favorites")):
-            if os.path.isfile(os.path.join(directory, f"Favorites/{file}")) and file != "anime_dict.json" \
-                    and file[len(file) - 5:] == ".json":
-                anime = main.Anime(os.path.join(directory, f"Favorites/{file}"))
-                if anime.last_search[0] < time.localtime()[2] or anime.last_search[1] < time.localtime()[1] \
-                        and not main.already_searched:
-                    step = math.ceil(100 / len([i for i in os.listdir(os.path.join(directory, "Favorites")) if
-                                                os.path.isfile(os.path.join(directory, f"Favorites/{i}"))
-                                                and i[len(i) - 5:] == ".json"]))
-                    try:
-                        self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}", step=step,
-                                             small_font=True)
-                    except tk.TclError:
-                        pass
-                self.fav_anime_list.append(anime)
-
-        if self.config_screen.config_info["check_episodes"] == 1:
-            main.already_searched = True
-
-        for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)) and file != "anime_dict.json" \
-                    and file[len(file) - 5:] == ".json":
-                anime = main.Anime(os.path.join(directory, file))
-                if anime.last_search[0] < time.localtime()[2] or anime.last_search[1] < time.localtime()[1] \
-                        and not main.already_searched:
-                    step = math.ceil(100 / len([i for i in os.listdir(directory) if
-                                                os.path.isfile(os.path.join(directory, i))
-                                                and i[len(i) - 5:] == ".json"]))
-                    try:
-                        self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}", step=step,
-                                             small_font=True)
-                    except tk.TclError:
-                        pass
-                self.anime_list.append(anime)
+        reg_files = [f for f in ANIMES_DIR.iterdir()
+                     if f.is_file() and f.suffix == ".json" and f.name != "anime_dict.json"]
+        reg_step = max(1, math.ceil(100 / len(reg_files))) if reg_files else 1
+        for file in reg_files:
+            try:
+                anime = main.Anime(file)
+            except json.decoder.JSONDecodeError:
+                continue
+            if check_config == 0 and anime.needs_check():
+                try:
+                    self.splash.load_bar(text=f"Checando por novos episódios de {anime.name}",
+                                         step=reg_step, small_font=True)
+                except tk.TclError:
+                    pass
+                anime.check_episodes()
+            self.anime_list.append(anime)
 
         return self.fav_anime_list + self.anime_list
 
+    def _add_anime_buttons(self, anime_list: list, n: int, raw_sw: int, raw_sh: int) -> int:
+        for ani in anime_list:
+            try:
+                self.splash.load_bar(text="Carregando " + ani.name, step=self.step)
+                if self.splash.percentage == 100:
+                    self.splash.finish()
+            except tk.TclError:
+                pass
+            if not download_thumb(ani, raw_sw, raw_sh):
+                continue
+            img = tk.PhotoImage(file=THUMBS_DIR / f"{ani.name}.png")
+            b = AniButton(self.scroller.sec_frame, img, n // 4, n % 4, ani)
+            self.b_list.append([b, img])
+            n += 1
+        return n
+
     def get_b_list(self):
-        n = 0
         self.fav_anime_list.sort(key=lambda x: x.name)
         self.anime_list.sort(key=lambda x: x.name)
         try:
             raw_sw = self.winfo_screenwidth()
             raw_sh = self.winfo_screenheight()
-
-            for ani in self.fav_anime_list:
-                try:
-                    self.splash.load_bar(text="Carregando " + ani.name, step=self.step)
-                    if self.splash.percentage == 100:
-                        self.splash.finish()
-                except tk.TclError:
-                    pass
-                success = download_thumb(ani, raw_sw, raw_sh)
-                if not success:
-                    continue
-                img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png"))
-
-                b = AniButton(self.scroller.sec_frame, img, n // 4, n % 4, ani)
-                self.b_list.append([b, img])
-
-                n += 1
-
-            for ani in self.anime_list:
-                try:
-                    self.splash.load_bar(text="Carregando " + ani.name, step=self.step)
-                    if self.splash.percentage == 100:
-                        self.splash.finish()
-                except tk.TclError:
-                    pass
-                success = download_thumb(ani, raw_sw, raw_sh)
-                if not success:
-                    continue
-                img = tk.PhotoImage(file=os.path.join(os.path.expanduser("~"), f"Animes/Thumbs/{ani.name}.png"))
-
-                b = AniButton(self.scroller.sec_frame, img, n // 4, n % 4, ani)
-                self.b_list.append([b, img])
-
-                n += 1
+            n = self._add_anime_buttons(self.fav_anime_list, 0, raw_sw, raw_sh)
+            self._add_anime_buttons(self.anime_list, n, raw_sw, raw_sh)
         except IndexError:
             messagebox.showerror("Erro: Um erro inesperado aconteceu, por favor reinicie a aplicação.")
             sys.exit()
@@ -1165,9 +1073,7 @@ class ResultButton(tk.Button):
         self.n = n
         self.link = link_list[n]
 
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-
-        soup = BeautifulSoup(requests.get(self.link, headers=headers).content, "html.parser")
+        soup = BeautifulSoup(requests.get(self.link, headers=HEADERS).content, "html.parser")
 
         h1 = soup.find('h1')
         self.title = h1.text.strip() if h1 else title
@@ -1182,8 +1088,7 @@ class ResultButton(tk.Button):
         self.info_list = info_items
 
         try:
-            task = threading.Thread(target=self.get_info)
-            task.start()
+            threading.Thread(target=self.get_info).start()
         except RuntimeError:
             self.get_info()
 
@@ -1264,7 +1169,6 @@ class SearchAnimeDialog(tk.Toplevel):
             self.withdraw()
             add_dialog = AddAnimeDialog(self.root)
             add_dialog.bind("<Destroy>", lambda e: self.deiconify())
-            return
 
         self.add_button = tk.Button(self.bottom_canvas, text="Adc. Manualmente", width=14, height=0, bg="#3CB371",
                                     command=add_command, fg="black", activeforeground="black",
@@ -1276,8 +1180,7 @@ class SearchAnimeDialog(tk.Toplevel):
         self.width = int(self.winfo_screenwidth() / 2)
         self.height = int(self.winfo_screenheight() / (6 / 5))
 
-        self.geometry(f"{self.width}x{self.height}"
-                      f"+{self.width // 2}+{self.height // 16}")
+        self.geometry(f"{self.width}x{self.height}+{self.width // 2}+{self.height // 16}")
 
         self.top_canvas.bind_all("<B1-Motion>", self.move)
 
@@ -1297,25 +1200,22 @@ class SearchAnimeDialog(tk.Toplevel):
         self.configure(cursor="watch")
         self.progress_bar["value"] = 0
 
-        for button in [(x[0], x[1]) for x in self.button_list]:
-            button[0].destroy()
-            button[1].destroy()
+        for button, label, *_ in self.button_list:
+            button.destroy()
+            label.destroy()
 
         self.button_list.clear()
-
         self.scroller.unbind_wheel()
 
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         keywords = self.search_field.get().split()
-        soup = BeautifulSoup(requests.get(f"https://animesonlinecc.to/?s={'+'.join(keywords)}", headers=headers)
-                             .content, "html.parser")
+        soup = BeautifulSoup(
+            requests.get(f"https://animesonlinecc.to/?s={'+'.join(keywords)}", headers=HEADERS).content,
+            "html.parser")
 
         result_list = []
         link_list = []
         for item in soup.find_all("article"):
-            a_tag = item.select_one("div.poster a")
-            if not a_tag:
-                a_tag = item.select_one("a")
+            a_tag = item.select_one("div.poster a") or item.select_one("a")
             if not a_tag:
                 continue
             img_tag = item.select_one("div.poster img") or a_tag.find("img")
@@ -1329,38 +1229,30 @@ class SearchAnimeDialog(tk.Toplevel):
                 result_list.append((title_text, img_src))
                 link_list.append(link)
 
-        n = 0
-        for title in result_list:
-            label = tk.Label(self.frame, text=title[0] + ':', anchor="center", font=button_font(),
+        for n, (title, img_src) in enumerate(result_list):
+            label = tk.Label(self.frame, text=title + ':', anchor="center", font=button_font(),
                              bg=highlight(highlight(self.root.config_screen.config_info["bg_color"])), fg="black")
             label.pack(pady=5, anchor="w")
 
             with tempfile.TemporaryFile() as image:
                 try:
-                    image.write(requests.get(title[1], headers=headers).content)
-                    img = Image.open(image).convert("RGB") \
-                        .resize((150, 150), Image.LANCZOS)
+                    image.write(requests.get(img_src, headers=HEADERS).content)
+                    img = Image.open(image).convert("RGB").resize((150, 150), Image.LANCZOS)
                     img.save(image, format="png")
-                except (requests.exceptions.InvalidSchema, Exception):
+                except Exception:
                     pass
                 else:
                     img = PIL.ImageTk.PhotoImage(img)
-
-                    button = ResultButton(self, img, title[0], n, link_list)
-
-                    self.button_list.append((button, label, img, title[0]))
-
+                    button = ResultButton(self, img, title, n, link_list)
+                    self.button_list.append((button, label, img, title))
                     label.configure(text=button.title + ':')
 
                 if self.winfo_height() == self.height:
-                    self.geometry(f"{self.width}x{self.height + 1}"
-                                  f"+{self.winfo_x()}+{self.winfo_y()}")
+                    self.geometry(f"{self.width}x{self.height + 1}+{self.winfo_x()}+{self.winfo_y()}")
                 else:
-                    self.geometry(f"{self.width}x{self.height}"
-                                  f"+{self.winfo_x()}+{self.winfo_y()}")
+                    self.geometry(f"{self.width}x{self.height}+{self.winfo_x()}+{self.winfo_y()}")
 
-            n += 1
-            self.progress_bar["value"] += 100/len(result_list)
+            self.progress_bar["value"] += 100 / len(result_list)
 
         self.configure(cursor="arrow")
 
@@ -1368,11 +1260,9 @@ class SearchAnimeDialog(tk.Toplevel):
         if event.widget is self.top_canvas or event.widget is self.top_label:
             self.configure(cursor="fleur")
             if event.x_root <= self.winfo_x() + int(event.x + self.width / 2):
-                self.geometry(f"{self.width}x{self.height}+{event.x_root - int(self.width / 2)}"
-                              f"+{event.y_root - 10}")
+                self.geometry(f"{self.width}x{self.height}+{event.x_root - int(self.width / 2)}+{event.y_root - 10}")
             else:
-                self.geometry(f"{self.width}x{self.height}+{event.x_root - int(event.x / 1.005)}"
-                              f"+{event.y_root + 10}")
+                self.geometry(f"{self.width}x{self.height}+{event.x_root - int(event.x / 1.005)}+{event.y_root + 10}")
             self.update()
 
 
@@ -1388,14 +1278,16 @@ class AddAnimeDialog(tk.Toplevel):
         self.middle_frame = tk.Frame(self, bg="#808080")
         self.middle_frame.pack(pady=10)
 
-        self.name_label = tk.Label(self.middle_frame, text="Nome:", background="#808080", font=button_font())
-        self.name_label.grid(row=1, column=0, padx=5)
+        btn_color = root.config_screen.config_info["button_color"]
+
+        tk.Label(self.middle_frame, text="Nome:", background="#808080", font=button_font()).grid(
+            row=1, column=0, padx=5)
 
         self.get_link_button = tk.Button(self.middle_frame, text="\u29C8", width=1, fg="black",
                                          activeforeground="black",
                                          command=lambda: self.search_link(self.name_text.get().strip()),
-                                         font=button_font(), bg=root.config_screen.config_info["button_color"],
-                                         activebackground=highlight(root.config_screen.config_info["button_color"]))
+                                         font=button_font(), bg=btn_color,
+                                         activebackground=highlight(btn_color))
         self.get_link_button.grid(row=1, column=2, padx=5)
 
         self.get_link_button.tooltip = ContextMenu(self.get_link_button, label="Procurar link pelo nome",
@@ -1412,93 +1304,83 @@ class AddAnimeDialog(tk.Toplevel):
         self.get_link_button.bind("<Motion>", get_link_threaded)
         self.get_link_button.bind("<ButtonRelease-1>", lambda e: self.search_link(self.name_text.get().strip()))
 
-        self.name_text = tk.Entry(self.middle_frame, width=int(self.winfo_screenwidth() / 20 - 10), font=button_font())
+        self.name_text = tk.Entry(self.middle_frame, width=int(self.winfo_screenwidth() / 20 - 10),
+                                  font=button_font())
         self.name_text.grid(row=1, column=1)
 
-        self.link_label = tk.Label(self.middle_frame, text="Link:", background="#808080", font=button_font())
-        self.link_label.grid(row=2, column=0)
+        tk.Label(self.middle_frame, text="Link:", background="#808080", font=button_font()).grid(row=2, column=0)
 
-        self.link_text = tk.Entry(self.middle_frame, width=int(self.winfo_screenwidth() / 20 - 10), font=button_font())
+        self.link_text = tk.Entry(self.middle_frame, width=int(self.winfo_screenwidth() / 20 - 10),
+                                  font=button_font())
         self.link_text.insert(0, "https://animesonlinecc.to/anime/")
         self.link_text.grid(row=2, column=1)
 
         self.bottom_frame = tk.Frame(self, bg="#808080")
         self.bottom_frame.pack()
 
-        self.site_button = tk.Button(self.bottom_frame, text="Ir para o site", width=40, fg="black",
-                                     activeforeground="black",
-                                     command=lambda: webbrowser.open("https://animesonlinecc.to"),
-                                     font=button_font(), bg=root.config_screen.config_info["button_color"],
-                                     activebackground=highlight(root.config_screen.config_info["button_color"]))
-        self.site_button.pack(side=tk.LEFT)
+        tk.Button(self.bottom_frame, text="Ir para o site", width=40, fg="black", activeforeground="black",
+                  command=lambda: webbrowser.open("https://animesonlinecc.to"),
+                  font=button_font(), bg=btn_color,
+                  activebackground=highlight(btn_color)).pack(side=tk.LEFT)
 
-        self.add_button = tk.Button(self.bottom_frame, text="Adicionar Anime", width=40, fg="black",
-                                    activeforeground="black",
-                                    command=lambda: self.process_input(self.name_text.get().strip(),
-                                                                       self.link_text.get().strip()),
-                                    font=button_font(), bg=root.config_screen.config_info["button_color"],
-                                    activebackground=highlight(root.config_screen.config_info["button_color"]))
-        self.add_button.pack(side=tk.RIGHT)
+        tk.Button(self.bottom_frame, text="Adicionar Anime", width=40, fg="black", activeforeground="black",
+                  command=lambda: self.process_input(self.name_text.get().strip(), self.link_text.get().strip()),
+                  font=button_font(), bg=btn_color,
+                  activebackground=highlight(btn_color)).pack(side=tk.RIGHT)
 
         self.exit_frame = tk.Frame(self, bg="#808080")
         self.exit_frame.pack()
 
-        self.exit_button = tk.Button(self.exit_frame, text="Voltar", width=83, fg="black", activeforeground="black",
-                                     bg=root.config_screen.config_info["button_color"], font=button_font(),
-                                     activebackground=highlight(root.config_screen.config_info["button_color"]),
-                                     command=self.destroy)
-        self.exit_button.pack()
+        tk.Button(self.exit_frame, text="Voltar", width=83, fg="black", activeforeground="black",
+                  bg=btn_color, font=button_font(), activebackground=highlight(btn_color),
+                  command=self.destroy).pack()
 
-        self.bind("<Return>", lambda e: self.process_input(self.name_text.get().strip(), self.link_text.get().strip()))
+        self.bind("<Return>", lambda e: self.process_input(self.name_text.get().strip(),
+                                                           self.link_text.get().strip()))
 
     def process_input(self, name, link):
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-
         def test_link():
             try:
-                r = requests.get(link, headers=headers)
+                r = requests.get(link, headers=HEADERS)
             except requests.exceptions.MissingSchema:
                 messagebox.showwarning(message="URL inválido, por favor tente novamente.")
                 return False
             if r.status_code == 200:
                 return True
-            messagebox.showerror(message="Não é possível conectar a este URL, por favor " +
+            messagebox.showerror(message="Não é possível conectar a este URL, por favor "
                                          "cheque sua conexão com a internet e tente novamente.")
             return False
 
-        if test_link() and name:
+        if not name:
+            return messagebox.showwarning(message="Por favor insira um nome!")
+        if test_link():
             self.withdraw()
-            messagebox.showinfo(message=f'Anime "{name}" adicionado com sucesso!' +
-                                        f'\nO aplicativo será reiniciado!')
+            messagebox.showinfo(message=f'Anime "{name}" adicionado com sucesso!\nO aplicativo será reiniciado!')
             main.add_anime(name, link)
             self.master.destroy()
             return MainWindow()
-        elif not name:
-            return messagebox.showwarning(message="Por favor insira um nome!")
 
     def search_link(self, name):
         self.configure(cursor="watch")
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         link = f"https://animesonlinecc.to/anime/{'-'.join(name.lower().split())}/"
-        r = requests.get(link, headers=headers)
+        r = requests.get(link, headers=HEADERS)
         if r.status_code == 200 and BeautifulSoup(r.content, "html.parser").select_one('ul.episodios'):
             self.link_text.delete(0, "end")
             self.link_text.insert(0, link)
-            self.configure(cursor="arrow")
         else:
             self.get_link_button.configure(fg="red", activeforeground="red")
-            self.configure(cursor="arrow")
+        self.configure(cursor="arrow")
 
 
-def download_thumb(ani, screen_width, screen_height):
+def download_thumb(ani, screen_width, screen_height) -> bool:
     thumb_w = int(screen_width // 5.333)
     thumb_h = int(screen_height // 4.5)
-    thumbs_dir = os.path.join(os.path.expanduser("~"), "Animes/Thumbs")
-    thumb_path = os.path.join(thumbs_dir, f"{ani.name}.png")
-    fail_path = os.path.join(thumbs_dir, f"{ani.name}.fail")
-    if os.path.isfile(fail_path):
+    thumb_path = THUMBS_DIR / f"{ani.name}.png"
+    fail_path = THUMBS_DIR / f"{ani.name}.fail"
+
+    if fail_path.is_file():
         return False
-    if os.path.isfile(thumb_path):
+    if thumb_path.is_file():
         try:
             existing = Image.open(thumb_path)
             if existing.size == (thumb_w, thumb_h):
@@ -1506,29 +1388,26 @@ def download_thumb(ani, screen_width, screen_height):
             existing.close()
         except Exception:
             pass
-        os.remove(thumb_path)
+        thumb_path.unlink()
+
     try:
-        if not os.path.isdir(thumbs_dir):
-            os.mkdir(thumbs_dir)
+        THUMBS_DIR.mkdir(exist_ok=True)
 
-        font_path = os.path.join(os.path.expanduser("~"), "Animes/font.ttf")
-        if not os.path.isfile(font_path):
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            font_data = requests.get(
+        font_path = ANIMES_DIR / "font.ttf"
+        if not font_path.is_file():
+            font_path.write_bytes(requests.get(
                 "https://drive.usercontent.google.com/u/0/uc?id=1DO7Eqo01NGHWTSMFWxuYKS1p4PFmd_wc&export=download",
-                headers=headers).content
-            with open(font_path, "wb") as f:
-                f.write(font_data)
+                headers=HEADERS).content)
 
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        r = requests.get(ani.link, headers=headers)
+        r = requests.get(ani.link, headers=HEADERS)
         if r.status_code != 200:
-            open(fail_path, 'w').close()
+            fail_path.touch()
             return False
         soup = BeautifulSoup(r.content, "html.parser")
         if not soup.select_one('ul.episodios'):
-            open(fail_path, 'w').close()
+            fail_path.touch()
             return False
+
         poster_div = (soup.find('div', class_='poster') or
                       soup.find('div', class_='imagen') or
                       soup.find('div', class_='thumb'))
@@ -1541,13 +1420,12 @@ def download_thumb(ani, screen_width, screen_height):
             return False
         img_link = img_tag.get('src')
 
-        raw_path = os.path.join(thumbs_dir, ani.name)
-        with open(raw_path, "wb") as image:
-            image.write(requests.get(img_link, headers=headers).content)
+        raw_path = THUMBS_DIR / ani.name
+        raw_path.write_bytes(requests.get(img_link, headers=HEADERS).content)
 
         img = Image.open(raw_path).convert("RGB").resize((thumb_w, thumb_h), Image.LANCZOS)
         img.save(thumb_path)
-        os.remove(raw_path)
+        raw_path.unlink()
 
         enhance_image(thumb_path)
 
@@ -1557,81 +1435,60 @@ def download_thumb(ani, screen_width, screen_height):
             fnt = ImageFont.truetype(font_path, size=max(10, 180 // max(len(ani.name), 1)))
         except (OSError, IOError):
             fnt = ImageFont.load_default()
-        text_pos = (4, img.height - fnt.size - 6)
-        draw.text(text_pos, ani.name, font=fnt, fill="white", stroke_width=1, stroke_fill="black")
+        draw.text((4, img.height - fnt.size - 6), ani.name, font=fnt, fill="white",
+                  stroke_width=1, stroke_fill="black")
         img.save(thumb_path)
 
         return True
     except Exception as e:
         print(f"Erro: Falha ao adicionar thumb do anime {ani.name}: {e}")
         try:
-            open(fail_path, 'w').close()
+            fail_path.touch()
         except Exception:
             pass
         return False
 
 
 def button_font(anime_=None, s=14):
-    def font_size():
-        if anime_ is None:
-            return s
+    if anime_ is None:
+        size = s
+    else:
         length = len(anime_.name)
-        try:
-            size = 16 - (length // 9)
-            if length >= 27:
-                size -= 1
-            return size
-        except ValueError:
-            return 6
-
-    return font.Font(family="Ubuntu Medium", size=font_size(), weight=font.BOLD)
+        size = 16 - (length // 9)
+        if length >= 27:
+            size -= 1
+    return font.Font(family="Ubuntu Medium", size=size, weight=font.BOLD)
 
 
 def anime_font(anime_=None, s=24):
-    def font_size():
-        if anime_ is None:
-            return s
+    if anime_ is None:
+        size = s
+    else:
         length = len(anime_.name)
-        try:
-            if length <= 15:
-                return 20
-            if length <= 25:
-                return 16
-            if length <= 35:
-                return 13
-            if length <= 50:
-                return 11
-            return 9
-        except ValueError:
-            return 9
-
-    return font.Font(family="Comic Sans MS", size=font_size(), weight=font.BOLD)
+        if length <= 15:
+            size = 20
+        elif length <= 25:
+            size = 16
+        elif length <= 35:
+            size = 13
+        elif length <= 50:
+            size = 11
+        else:
+            size = 9
+    return font.Font(family="Comic Sans MS", size=size, weight=font.BOLD)
 
 
-def enhance_image(image):
-    enh_image = Image.open(image)
-
-    enh_col = ImageEnhance.Color(enh_image)
-    color = 1.25
-    enh_image = enh_col.enhance(color)
-
-    enh_con = ImageEnhance.Contrast(enh_image)
-    contrast = 1.25
-    enh_image = enh_con.enhance(contrast)
-
-    enh_sha = ImageEnhance.Sharpness(enh_image)
-    sharpness = 2.0
-    enh_image = enh_sha.enhance(sharpness)
-
-    enh_image.save(image)
+def enhance_image(path):
+    img = Image.open(path)
+    img = ImageEnhance.Color(img).enhance(1.25)
+    img = ImageEnhance.Contrast(img).enhance(1.25)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+    img.save(path)
 
 
-def check_internet():
-    """ Checar conexão de ‘internet’ """
-    url = 'https://www.google.com'
-    timeout = 5
+def check_internet() -> bool:
     try:
-        requests.get(url, timeout=timeout)
+        requests.get('https://www.google.com', timeout=5)
         return True
     except requests.exceptions.ConnectionError:
         return False
@@ -1641,15 +1498,11 @@ def download_recommendations():
     if not messagebox.askyesno(message="Baixar animes recomendados?"):
         return
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         data = requests.get(
             "https://drive.usercontent.google.com/download?id=1tbCWhpSpKqdUSNTqFJWCACX6FlGPFgL6&export=download&authuser=0",
-            headers=headers).content
-        config_dir = os.path.join(os.path.expanduser("~"), "Animes/Config")
-        if not os.path.isdir(config_dir):
-            os.mkdir(config_dir)
-        with open(os.path.join(config_dir, "animes recomendados.json"), "wb") as f:
-            f.write(data)
+            headers=HEADERS).content
+        CONFIG_DIR.mkdir(exist_ok=True)
+        (CONFIG_DIR / "animes recomendados.json").write_bytes(data)
         messagebox.showinfo(message="Recomendações baixadas com sucesso!")
     except requests.exceptions.ConnectionError:
         messagebox.showerror(message="Erro: verifique sua conexão com a internet.")
@@ -1657,10 +1510,9 @@ def download_recommendations():
 
 if __name__ == '__main__':
     try:
-        if not os.path.isdir(os.path.join(os.path.expanduser('~'), "Animes")):
-            os.mkdir(os.path.join(os.path.expanduser('~'), "Animes"))
-            os.mkdir(os.path.join(os.path.expanduser('~'), "Animes/Thumbs"))
-            os.mkdir(os.path.join(os.path.expanduser('~'), "Animes/Favorites"))
+        ANIMES_DIR.mkdir(exist_ok=True)
+        THUMBS_DIR.mkdir(exist_ok=True)
+        FAVS_DIR.mkdir(exist_ok=True)
         window = MainWindow()
         window.mainloop()
     except requests.exceptions.ConnectionError:
